@@ -27,6 +27,14 @@ test('verifySignature returns false for empty secret or signature', () => {
   assert.ok(!verifySignature(body, '', 'secret'));
 });
 
+test('verifySignature handles invalid hex in signature', () => {
+  const secret = 'test-secret';
+  const body = '{"type":"test"}';
+  
+  assert.ok(!verifySignature(body, 'not-valid-hex', secret));
+  assert.ok(!verifySignature(body, 'sha256=not-valid-hex', secret));
+});
+
 test('parseBody parses valid JSON', () => {
   const data = { type: 'test', id: 123 };
   const chunks = [Buffer.from(JSON.stringify(data))];

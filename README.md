@@ -39,6 +39,7 @@ Configure via environment variables:
 
 - `PORT` - Server port (default: 3000)
 - `WEBHOOK_SECRET` - Secret for HMAC signature verification (optional but recommended)
+- `MAX_BODY_SIZE` - Maximum request body size in bytes (default: 1048576 = 1MB)
 
 ## Supported Events
 
@@ -99,7 +100,7 @@ For production use, always enable signature verification:
 
 1. Set the `WEBHOOK_SECRET` environment variable
 2. Vagaro will send signatures in the `X-Vagaro-Signature` or `X-Webhook-Signature` header
-3. The handler automatically verifies signatures using HMAC-SHA256
+3. The handler automatically verifies signatures using HMAC-SHA256 with timing-safe comparison
 
 Example signature generation (for testing):
 
@@ -152,6 +153,13 @@ Tests cover:
 ```json
 {
   "error": "Invalid signature"
+}
+```
+
+**Request Too Large (413)**
+```json
+{
+  "error": "Request body too large"
 }
 ```
 
@@ -218,11 +226,13 @@ WantedBy=multi-user.target
 
 ## Security Best Practices
 
-1. **Always use signature verification** in production
-2. **Use HTTPS** - Deploy behind a reverse proxy (nginx, Caddy)
-3. **Rate limiting** - Add rate limiting at the proxy level
-4. **Firewall** - Restrict webhook endpoint to Vagaro IPs only
-5. **Logging** - Monitor and log all webhook activity
+1. **Always use signature verification** in production - Prevents unauthorized webhook requests
+2. **Configure body size limits** - Default 1MB protects against memory exhaustion attacks
+3. **Use HTTPS** - Deploy behind a reverse proxy (nginx, Caddy) with TLS
+4. **Rate limiting** - Add rate limiting at the proxy level to prevent abuse
+5. **Firewall** - Restrict webhook endpoint to Vagaro IPs only when possible
+6. **Logging** - Monitor and log all webhook activity for audit trails
+7. **Timing-safe comparisons** - Built-in protection against timing attacks on signatures
 
 ## License
 

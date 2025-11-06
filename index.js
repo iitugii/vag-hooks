@@ -1,5 +1,5 @@
 import { createServer } from 'http';
-import { createHmac } from 'crypto';
+import { createHmac, timingSafeEqual } from 'crypto';
 
 /**
  * Lean and efficient Vagaro webhook handler
@@ -9,9 +9,10 @@ import { createHmac } from 'crypto';
 // Configuration
 const PORT = process.env.PORT || 3000;
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || '';
+const MAX_BODY_SIZE = parseInt(process.env.MAX_BODY_SIZE || '1048576', 10); // 1MB default
 
 /**
- * Verify webhook signature for security
+ * Verify webhook signature for security (timing-safe comparison)
  * @param {string} body - Raw request body
  * @param {string} signature - Signature from header
  * @param {string} secret - Webhook secret
@@ -24,7 +25,21 @@ function verifySignature(body, signature, secret) {
     .update(body)
     .digest('hex');
   
-  return signature === expectedSignature || signature === `sha256=${expectedSignature}`;
+  // Remove 'sha256=' prefix if present
+  const cleanSignature = signature.startsWith('sha256=') 
+    ? signature.slice(7) 
+    : signature;
+  
+  // Use timing-safe comparison to prevent timing attacks
+  try {
+    return timingSafeEqual(
+      Buffer.from(expectedSignature, 'hex'),
+      Buffer.from(cleanSignature, 'hex')
+    );
+  } catch (e) {
+    // Buffer lengths don't match or invalid hex
+    return false;
+  }
 }
 
 /**
@@ -108,8 +123,21 @@ const server = createServer(async (req, res) => {
   }
 
   const chunks = [];
+  let bodySize = 0;
   
-  req.on('data', chunk => chunks.push(chunk));
+  req.on('data', chunk => {
+    bodySize += chunk.length;
+    
+    // Prevent memory exhaustion attacks
+    if (bodySize > MAX_BODY_SIZE) {
+      res.writeHead(413, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Request body too large' }));
+      req.destroy();
+      return;
+    }
+    
+    chunks.push(chunk);
+  });
   
   req.on('end', async () => {
     const { data, raw, error } = parseBody(chunks);
