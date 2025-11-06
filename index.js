@@ -88,7 +88,8 @@ async function handleWebhookEvent(event) {
  * Handle appointment events
  */
 function handleAppointmentEvent(type, data) {
-  console.log(`[Appointment] ${type}:`, data?.id);
+  // Use structured logging to avoid format string issues
+  console.log('[Appointment]', type + ':', data?.id);
   // Implement your appointment logic here
   return { status: 'processed', type };
 }
@@ -97,7 +98,8 @@ function handleAppointmentEvent(type, data) {
  * Handle customer events
  */
 function handleCustomerEvent(type, data) {
-  console.log(`[Customer] ${type}:`, data?.id);
+  // Use structured logging to avoid format string issues
+  console.log('[Customer]', type + ':', data?.id);
   // Implement your customer logic here
   return { status: 'processed', type };
 }
@@ -106,7 +108,8 @@ function handleCustomerEvent(type, data) {
  * Handle payment events
  */
 function handlePaymentEvent(type, data) {
-  console.log(`[Payment] ${type}:`, data?.id);
+  // Use structured logging to avoid format string issues
+  console.log('[Payment]', type + ':', data?.id);
   // Implement your payment logic here
   return { status: 'processed', type };
 }
