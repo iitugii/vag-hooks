@@ -25,6 +25,8 @@ test('verifySignature returns false for empty secret or signature', () => {
   
   assert.ok(!verifySignature(body, 'signature', ''));
   assert.ok(!verifySignature(body, '', 'secret'));
+  assert.ok(!verifySignature(body, undefined, 'secret'));
+  assert.ok(!verifySignature(body, null, 'secret'));
 });
 
 test('verifySignature handles invalid hex in signature', () => {

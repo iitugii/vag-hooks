@@ -124,18 +124,21 @@ const server = createServer(async (req, res) => {
 
   const chunks = [];
   let bodySize = 0;
+  let destroyed = false;
   
   req.on('data', chunk => {
-    bodySize += chunk.length;
-    
-    // Prevent memory exhaustion attacks
-    if (bodySize > MAX_BODY_SIZE) {
-      res.writeHead(413, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Request body too large' }));
-      req.destroy();
+    // Prevent memory exhaustion attacks - check BEFORE adding chunk
+    if (bodySize + chunk.length > MAX_BODY_SIZE) {
+      if (!destroyed) {
+        destroyed = true;
+        res.writeHead(413, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Request body too large' }));
+        req.destroy();
+      }
       return;
     }
     
+    bodySize += chunk.length;
     chunks.push(chunk);
   });
   
@@ -151,7 +154,7 @@ const server = createServer(async (req, res) => {
     // Verify signature if secret is configured
     if (WEBHOOK_SECRET) {
       const signature = req.headers['x-vagaro-signature'] || req.headers['x-webhook-signature'];
-      if (!verifySignature(raw, signature, WEBHOOK_SECRET)) {
+      if (!signature || !verifySignature(raw, signature, WEBHOOK_SECRET)) {
         res.writeHead(401, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Invalid signature' }));
         return;
