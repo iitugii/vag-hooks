@@ -1,0 +1,21 @@
+{
+  "name": "vag-hooks",
+  "version": "1.0.0",
+  "description": "Lean and efficient Vagaro webhook handler",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "start": "node index.js"
+  },
+  "keywords": [
+    "vagaro",
+    "webhooks",
+    "api"
+  ],
+  "author": "",
+  "license": "ISC",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
