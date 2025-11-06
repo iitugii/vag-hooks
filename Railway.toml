@@ -1,0 +1,8 @@
+[build]
+buildCommand = "npm ci"
+
+[deploy]
+startCommand = "npx prisma generate && npm run prisma:migrate && npm run build && npm start"
+
+[service]
+internal_port = 3000
