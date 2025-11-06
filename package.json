@@ -1,33 +1,41 @@
 {
-  "name": "vag-hooks",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/iitugii/vag-hooks.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "bugs": {
-    "url": "https://github.com/iitugii/vag-hooks/issues"
-  },
-  "homepage": "https://github.com/iitugii/vag-hooks#readme",
-  "devDependencies": {
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.5",
-    "@types/morgan": "^1.9.10",
-    "@types/node": "^24.10.0",
-    "prisma": "^6.19.0",
-    "tsx": "^4.20.6",
-    "typescript": "^5.9.3"
-  },
-  "dependencies": {
-    "@prisma/client": "^6.19.0"
-  }
+    "name": "vag-hooks",
+    "version": "1.0.0",
+    "description": "",
+    "main": "index.js",
+    "scripts": {
+        "prisma:generate": "prisma generate",
+        "build": "tsc",
+        "dev": "tsx watch src/index.ts",
+        "prisma:migrate": "prisma migrate deploy || prisma migrate dev --name init",
+        "start": "node dist/index.js"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/iitugii/vag-hooks.git"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "type": "commonjs",
+    "bugs": {
+        "url": "https://github.com/iitugii/vag-hooks/issues"
+    },
+    "homepage": "https://github.com/iitugii/vag-hooks#readme",
+    "devDependencies": {
+        "@types/cors": "^2.8.19",
+        "@types/express": "^5.0.5",
+        "@types/morgan": "^1.9.10",
+        "@types/node": "^24.10.0",
+        "prisma": "^6.19.0",
+        "tsx": "^4.20.6",
+        "typescript": "^5.9.3"
+    },
+    "dependencies": {
+        "@prisma/client": "^6.19.0",
+        "cors": "^2.8.5",
+        "express": "^5.1.0",
+        "morgan": "^1.10.1",
+        "raw-body": "^3.0.1"
+    }
 }
