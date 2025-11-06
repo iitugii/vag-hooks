@@ -1,4 +1,3 @@
-@'
 import express from "express";
 import morgan from "morgan";
 import cors from "cors";
@@ -29,4 +28,3 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 });
 
 app.listen(PORT, () => logger.info(`Server listening on :${PORT}`));
-'@ | Set-Content src\index.ts

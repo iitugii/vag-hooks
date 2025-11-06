@@ -1,4 +1,3 @@
-@'
 import { Request, Response, NextFunction } from "express";
 import getRawBody from "raw-body";
 
@@ -15,4 +14,3 @@ export async function rawBody(req: Request, res: Response, next: NextFunction) {
     next();
   } catch (e) { next(e); }
 }
-'@ | Set-Content src\middleware\rawBody.ts

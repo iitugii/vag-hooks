@@ -1,4 +1,3 @@
-@'
 import { Router } from "express";
 import { prisma } from "../lib/prisma";
 
@@ -20,4 +19,3 @@ router.get("/:id", async (req, res) => {
 });
 
 export default router;
-'@ | Set-Content src\routes\events.ts

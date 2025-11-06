@@ -1,4 +1,3 @@
-@'
 import { prisma } from "../lib/prisma";
 
 export async function storeEvent(input: any) {
@@ -20,4 +19,3 @@ export async function storeEvent(input: any) {
     },
   });
 }
-'@ | Set-Content src\services\eventService.ts

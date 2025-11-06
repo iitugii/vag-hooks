@@ -1,6 +1,4 @@
-@'
 import { Router } from "express";
 const router = Router();
 router.get("/", (_req, res) => res.status(200).send("ok"));
 export default router;
-'@ | Set-Content src\routes\health.ts

@@ -1,4 +1,3 @@
-@'
 import { Router } from "express";
 import crypto from "crypto";
 import { storeEvent } from "../services/eventService";
@@ -33,6 +32,7 @@ router.post("/", async (req, res) => {
       const payload = item.payload ?? item;
       const businessIds = item.businessIds || payload?.businessIds || [];
 
+      // Derived cash field (cash collected = cashamount - amountdue)
       if (payload && typeof payload.cashamount === "number" && typeof payload.amountdue === "number") {
         payload.cash_collected = Math.max(0, payload.cashamount - payload.amountdue);
       }
@@ -53,4 +53,3 @@ router.post("/", async (req, res) => {
 });
 
 export default router;
-'@ | Set-Content src\routes\vagaro.ts
