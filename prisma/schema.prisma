@@ -1,0 +1,29 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model WebhookEvent {
+  id           String   @id @default(cuid())
+  eventId      String   @unique
+  entityType   String
+  action       String
+  businessIds  String[]
+  createdDate  DateTime
+  receivedAt   DateTime @default(now())
+
+  rawBody      String
+  headers      Json
+  payload      Json
+  sourceIp     String?
+  userAgent    String?
+
+  day          DateTime @default(now()) @db.Date
+
+  @@index([entityType, action])
+  @@index([day])
+}
