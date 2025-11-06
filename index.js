@@ -7,9 +7,9 @@ import { createHmac, timingSafeEqual } from 'crypto';
  */
 
 // Configuration
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT) || 3000;
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || '';
-const MAX_BODY_SIZE = parseInt(process.env.MAX_BODY_SIZE || '1048576', 10); // 1MB default
+const MAX_BODY_SIZE = Number(process.env.MAX_BODY_SIZE) || 1048576; // 1MB default
 
 /**
  * Verify webhook signature for security (timing-safe comparison)
