@@ -146,6 +146,11 @@ const server = createServer(async (req, res) => {
   });
   
   req.on('end', async () => {
+    // Don't process if request was already destroyed due to size limit
+    if (destroyed) {
+      return;
+    }
+    
     const { data, raw, error } = parseBody(chunks);
     
     if (error) {

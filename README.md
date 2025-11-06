@@ -17,7 +17,6 @@ A minimal, high-performance webhook receiver for Vagaro events with zero externa
 ```bash
 git clone https://github.com/iitugii/vag-hooks.git
 cd vag-hooks
-npm install
 ```
 
 ## Quick Start
@@ -184,8 +183,7 @@ Tests cover:
 ```dockerfile
 FROM node:18-alpine
 WORKDIR /app
-COPY package*.json ./
-COPY index.js .
+COPY package.json index.js ./
 EXPOSE 3000
 CMD ["node", "index.js"]
 ```
