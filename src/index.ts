@@ -13,6 +13,7 @@ import { prisma } from "./lib/prisma";
 import dashboardRouter from "./routes/dashboard"; // requires you already created src/routes/dashboard.ts
 import metricsRouter from "./routes/metrics";
 import cashoutRouter from "./routes/cashout";
+import debugRouter from "./routes/debug";
 
 
 const app = express();
@@ -51,6 +52,7 @@ app.use("/export", gate, exportRouter);        // gated if DASH_TOKEN is set
 app.use("/metrics", gate, metricsRouter);      // gated if DASH_TOKEN is set
 app.use("/cashout", gate, cashoutRouter);      // gated if DASH_TOKEN is set
 app.use("/webhooks/vagaro", vagaroRouter);
+app.use("/debug", debugRouter);
 
 // Inline DB check (kept for easy verification)
 app.get("/health/db", async (_req, res) => {
