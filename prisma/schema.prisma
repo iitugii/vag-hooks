@@ -8,13 +8,13 @@ datasource db {
 }
 
 model WebhookEvent {
-  id           String   @id @default(cuid())
-  eventId      String   @unique
+  id           String    @id @default(cuid())
+  eventId      String    @unique
   entityType   String
   action       String
   businessIds  String[]
   createdDate  DateTime
-  receivedAt   DateTime @default(now())
+  receivedAt   DateTime  @default(now())
 
   rawBody      String
   headers      Json
@@ -22,7 +22,9 @@ model WebhookEvent {
   sourceIp     String?
   userAgent    String?
 
-  day          DateTime @default(now()) @db.Date
+  // Derived fields
+  cash_collected Float?   // added for cashout calculations
+  day            DateTime @default(now()) @db.Date
 
   @@index([entityType, action])
   @@index([day])
