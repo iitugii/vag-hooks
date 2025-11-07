@@ -1,3 +1,4 @@
+// src/routes/cashout.ts
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import path from 'path';
@@ -18,7 +19,6 @@ router.get('/data', async (req, res) => {
     const month = parseInt(req.query.month as string) || now.getMonth() + 1;
     const monthStr = String(month).padStart(2, '0');
 
-    // CASH variants (same as your list) MINUS DISCOUNT variants (discount/discountAmount)
     const rows = await prisma.$queryRaw<Row[]>`
       WITH base AS (
         SELECT
@@ -31,33 +31,47 @@ router.get('/data', async (req, res) => {
         FROM base
         WHERE date_trunc('month', ts_local)::date = (${year} || '-' || ${monthStr} || '-01')::date
       ),
-      cash_per_row AS (
+      cash_and_discount AS (
         SELECT
           ts_local::date AS d,
-          /* cash */
-          COALESCE( (payload->>'amountCash')::numeric,
-                    (payload->'payload'->>'amountCash')::numeric,
-                    (payload->>'cashAmount')::numeric,
-                    (payload->'payload'->>'cashAmount')::numeric,
-                    (payload->>'cash')::numeric,
-                    (payload->'payload'->>'cash')::numeric,
-                    (payload->>'cash_in')::numeric,
-                    (payload->'payload'->>'cash_in')::numeric,
-                    (payload->>'tenderAmount')::numeric,
-                    (payload->'payload'->>'tenderAmount')::numeric,
-                    0) AS cash_val,
-          /* discount */
-          COALESCE( (payload->>'discount')::numeric,
-                    (payload->'payload'->>'discount')::numeric,
-                    (payload->>'discountAmount')::numeric,
-                    (payload->'payload'->>'discountAmount')::numeric,
-                    0) AS discount_val
+          /* cash across common keys */
+          COALESCE(
+            (payload->>'amountCash')::numeric,
+            (payload->'payload'->>'amountCash')::numeric,
+            (payload->>'cashAmount')::numeric,
+            (payload->'payload'->>'cashAmount')::numeric,
+            (payload->>'cash')::numeric,
+            (payload->'payload'->>'cash')::numeric,
+            (payload->>'cash_in')::numeric,
+            (payload->'payload'->>'cash_in')::numeric,
+            (payload->>'tenderAmount')::numeric,
+            (payload->'payload'->>'tenderAmount')::numeric,
+            0
+          ) AS cash_val,
+          /* discount across common keys */
+          COALESCE(
+            (payload->>'discount')::numeric,
+            (payload->'payload'->>'discount')::numeric,
+            (payload->>'discountAmount')::numeric,
+            (payload->'payload'->>'discountAmount')::numeric,
+            0
+          ) AS discount_val
         FROM month_scope
+      ),
+      per_row_net AS (
+        SELECT
+          d,
+          /* only subtract discount when this row has cash */
+          CASE
+            WHEN cash_val <> 0 THEN (cash_val - discount_val)
+            ELSE 0
+          END AS net_val
+        FROM cash_and_discount
       )
       SELECT
         to_char(d, 'YYYY-MM-DD') AS day_local,
-        (SUM(cash_val) - SUM(discount_val))::double precision AS total
-      FROM cash_per_row
+        SUM(net_val)::double precision AS total
+      FROM per_row_net
       GROUP BY d
       ORDER BY d;
     `;
