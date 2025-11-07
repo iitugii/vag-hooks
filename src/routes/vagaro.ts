@@ -11,6 +11,9 @@ function verifySignature(rawBody: string, signature?: string) {
   const expected = crypto.createHmac("sha256", SECRET).update(rawBody).digest("hex");
   return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
 }
+router.get("/", (_req, res) => {
+  res.status(200).json({ ok: true, hint: "Use POST for real webhooks." });
+});
 
 router.post("/", async (req, res) => {
   try {
