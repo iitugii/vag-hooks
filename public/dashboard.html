@@ -32,6 +32,7 @@
     <input id="auth" placeholder="auth token (if required)" />
     <button id="apply">Apply</button>
     <button id="refresh">Refresh</button>
+    <button id="download">Download Excel</button>
   </div>
 
   <table id="eventsTable">
@@ -73,6 +74,27 @@
     modalPre: document.getElementById("modalPre"),
     modalTitle: document.getElementById("modalTitle"),
     closeModal: document.getElementById("closeModal"),
+
+  function exportUrl() {
+    const token = el.auth.value.trim();
+    const q = new URLSearchParams();
+    if (el.filterType.value) q.set("entityType", el.filterType.value);
+    if (el.filterAction.value) q.set("action", el.filterAction.value);
+    if (el.dateFrom.value) q.set("dateFrom", el.dateFrom.value);
+    if (el.dateTo.value) q.set("dateTo", el.dateTo.value);
+    if (el.limit.value) q.set("limit", el.limit.value);
+    if (token) q.set("auth", token);
+    return `/export/webhooks.xlsx?${q.toString()}`;
+  }
+
+  document.getElementById("download").onclick = () => {
+    // Navigate to URL to trigger browser download
+    window.location.href = exportUrl();
+  };
+
+  // ...existing code below...
+</script>
+
   };
 
   function qs(params) {
