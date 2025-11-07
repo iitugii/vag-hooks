@@ -6,8 +6,8 @@ const prisma = new PrismaClient();
 
 /**
  * GET /debug-cash?date=YYYY-MM-DD
- * Token-protected (x-auth-token must equal DASH_TOKEN).
- * Returns each row's cashAmount, changeDue, amountDue, and computed nets for the local day.
+ * Token-protected via x-auth-token == DASH_TOKEN
+ * Audits today's (local) rows and computes cashAmount - changeDue per row and totals.
  */
 router.get("/debug-cash", async (req, res) => {
   const token = (req.header("x-auth-token") || "").trim();
@@ -17,7 +17,6 @@ router.get("/debug-cash", async (req, res) => {
 
   const date = (req.query.date as string) || new Date().toISOString().slice(0, 10);
 
-  // Pull rows for the LOCAL (America/New_York) calendar day
   const rows = await prisma.$queryRaw<any[]>`
     WITH base AS (
       SELECT
@@ -35,7 +34,7 @@ router.get("/debug-cash", async (req, res) => {
     ORDER BY ts_local ASC;
   `;
 
-  let sumCash = 0, sumChange = 0, sumOldChange = 0;
+  let sumCash = 0, sumChange = 0;
 
   const audit = rows.map(r => {
     const p = r.payload || {};
