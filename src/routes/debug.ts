@@ -4,16 +4,20 @@ import { PrismaClient } from "@prisma/client";
 const router = express.Router();
 const prisma = new PrismaClient();
 
-// GET /debug/cash-audit?date=YYYY-MM-DD  (protected)
-router.get("/cash-audit", async (req, res) => {
-  const token = req.header("x-auth-token") || "";
+/**
+ * GET /debug-cash?date=YYYY-MM-DD
+ * Token-protected (x-auth-token must equal DASH_TOKEN).
+ * Returns each row's cashAmount, changeDue, amountDue, and computed nets for the local day.
+ */
+router.get("/debug-cash", async (req, res) => {
+  const token = (req.header("x-auth-token") || "").trim();
   if (!process.env.DASH_TOKEN || token !== process.env.DASH_TOKEN) {
     return res.status(403).json({ ok: false, error: "unauthorized" });
   }
 
-  const date = (req.query.date as string) || new Date().toISOString().slice(0,10);
+  const date = (req.query.date as string) || new Date().toISOString().slice(0, 10);
 
-  // Pull rows for the LOCAL calendar day (America/New_York)
+  // Pull rows for the LOCAL (America/New_York) calendar day
   const rows = await prisma.$queryRaw<any[]>`
     WITH base AS (
       SELECT
@@ -31,12 +35,18 @@ router.get("/cash-audit", async (req, res) => {
     ORDER BY ts_local ASC;
   `;
 
+  let sumCash = 0, sumChange = 0, sumOldChange = 0;
+
   const audit = rows.map(r => {
     const p = r.payload || {};
     const inner = p.payload || {};
     const cashAmount = Number(p.cashAmount ?? inner.cashAmount ?? 0);
     const changeDue  = Number(p.changeDue  ?? inner.changeDue  ?? 0);
     const amountDue  = Number(p.amountDue  ?? inner.amountDue  ?? 0);
+
+    sumCash   += cashAmount;
+    sumChange += changeDue;
+
     return {
       id: r.id,
       ts_local: r.ts_local,
@@ -48,7 +58,17 @@ router.get("/cash-audit", async (req, res) => {
     };
   });
 
-  res.json({ date, count: audit.length, audit });
+  res.json({
+    ok: true,
+    date,
+    count: audit.length,
+    totals: {
+      cash_in: +sumCash.toFixed(2),
+      change_out: +sumChange.toFixed(2),
+      net_current_logic: +(sumCash - sumChange).toFixed(2),
+    },
+    audit,
+  });
 });
 
 export default router;
