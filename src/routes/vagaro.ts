@@ -32,7 +32,7 @@ router.post("/", async (req, res) => {
       const payload = item.payload ?? item;
       const businessIds = item.businessIds || payload?.businessIds || [];
 
-      // Derived cash field (cash collected = cashamount - amountdue)
+      // Derived field: cash collected = cashamount - amountdue
       if (payload && typeof payload.cashamount === "number" && typeof payload.amountdue === "number") {
         payload.cash_collected = Math.max(0, payload.cashamount - payload.amountdue);
       }
