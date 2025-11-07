@@ -17,6 +17,10 @@ const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 
 // ---------- optional token gate for /events and /dashboard ----------
 const DASH_TOKEN = process.env.DASH_TOKEN || "";
+// Let the frontend know if auth is required
+app.get("/config", (_req, res) => {
+  res.json({ protected: !!DASH_TOKEN });
+});
 
 function gate(req: express.Request, res: express.Response, next: express.NextFunction) {
   if (!DASH_TOKEN) return next(); // open access when no token set
@@ -40,6 +44,7 @@ app.use(express.static("public"));
 app.use("/health", healthRouter);
 app.use("/events", gate, eventsRouter);        // gated if DASH_TOKEN is set
 app.use("/dashboard", gate, dashboardRouter);  // gated if DASH_TOKEN is set
+app.use("/export", gate, exportRouter);        // gated if DASH_TOKEN is set
 app.use("/webhooks/vagaro", vagaroRouter);
 
 // Inline DB check (kept for easy verification)

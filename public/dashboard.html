@@ -2,37 +2,48 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Vagaro Webhooks Dashboard</title>
 <style>
-  body { font-family: system-ui, sans-serif; margin: 2rem; background:#f7f7f7; color:#333; }
-  h1 { color:#444; margin-bottom: .5rem; }
-  .controls { display:flex; gap:.5rem; flex-wrap:wrap; margin: 1rem 0; }
-  input, select, button { padding:.5rem .7rem; border:1px solid #ccc; border-radius:8px; background:#fff; }
-  table { border-collapse: collapse; width: 100%; background:#fff; box-shadow:0 2px 6px rgba(0,0,0,.08); }
-  th, td { padding:.6rem 1rem; border-bottom:1px solid #eee; font-size:14px; }
+  :root { --bg:#f7f7f7; --text:#333; --muted:#666; --card:#fff; --line:#eaeaea; --pill:#eef; --accent:#0b5cff;}
+  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 2rem; background: var(--bg); color: var(--text); }
+  h1 { margin: 0 0 .25rem 0; }
+  .sub { color: var(--muted); margin: 0 0 1rem 0; }
+  .banner { display:none; margin: 0 0 1rem 0; padding: .6rem .8rem; background:#fff6d6; border:1px solid #ffe08a; border-radius:10px; }
+  .controls { display:flex; gap:.5rem; flex-wrap:wrap; margin: 1rem 0; align-items:center; }
+  input, button { padding:.55rem .7rem; border:1px solid #ccc; border-radius:10px; background:#fff; }
+  button { cursor:pointer; }
+  button.primary { background: var(--accent); color:#fff; border:1px solid var(--accent); }
+  table { width:100%; border-collapse: collapse; background: var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  th, td { padding: .65rem 1rem; border-bottom:1px solid var(--line); font-size:14px; }
   th { background:#fafafa; text-align:left; }
   tbody tr:hover { background:#f0f8ff; }
-  .pill { padding:.2rem .5rem; border-radius:999px; background:#eef; }
   .right { text-align:right; }
+  .pill { padding:.15rem .45rem; border-radius:999px; background:var(--pill); }
+  code { background:#eef; padding:.15rem .35rem; border-radius:6px; }
   .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.5); display:none; align-items:center; justify-content:center; }
   .modal { width:min(900px, 95vw); background:#fff; border-radius:12px; padding:1rem; box-shadow:0 6px 24px rgba(0,0,0,.2); }
   pre { max-height:60vh; overflow:auto; background:#0b1020; color:#e6f1ff; padding:1rem; border-radius:8px; }
   .row { display:flex; gap:.5rem; align-items:center; }
+  .spacer { flex:1; }
 </style>
 </head>
 <body>
+  <div id="banner" class="banner">🔒 Protected: a token is required to view and export events.</div>
   <h1>Vagaro Webhooks</h1>
+  <p class="sub">Recent events from your Railway + Postgres capture service.</p>
+
   <div class="controls">
-    <input id="filterType" placeholder="entityType (e.g., customer, appointment)" />
+    <input id="filterType" placeholder="entityType (e.g., customer)" />
     <input id="filterAction" placeholder="action (e.g., updated)" />
     <input id="dateFrom" type="date" />
     <input id="dateTo" type="date" />
     <input id="limit" type="number" min="1" max="200" value="50" style="width:90px" />
-    <input id="auth" placeholder="auth token (if required)" />
+    <div class="spacer"></div>
+    <input id="auth" placeholder="auth token (if required)" style="width:220px" />
     <button id="apply">Apply</button>
     <button id="refresh">Refresh</button>
-    <button id="download">Download Excel</button>
+    <button id="download" class="primary">Download Excel</button>
   </div>
 
   <table id="eventsTable">
@@ -55,12 +66,13 @@
         <strong id="modalTitle">Payload</strong>
         <button id="closeModal">Close</button>
       </div>
-      <pre id="modalPre"></pre>
+      <pre id="modalPre">{}</pre>
     </div>
   </div>
 
 <script>
   const el = {
+    banner: document.getElementById("banner"),
     tbody: document.querySelector("#eventsTable tbody"),
     filterType: document.getElementById("filterType"),
     filterAction: document.getElementById("filterAction"),
@@ -70,50 +82,49 @@
     auth: document.getElementById("auth"),
     apply: document.getElementById("apply"),
     refresh: document.getElementById("refresh"),
+    download: document.getElementById("download"),
     modalBackdrop: document.getElementById("modalBackdrop"),
     modalPre: document.getElementById("modalPre"),
     modalTitle: document.getElementById("modalTitle"),
     closeModal: document.getElementById("closeModal"),
-
-  function exportUrl() {
-    const token = el.auth.value.trim();
-    const q = new URLSearchParams();
-    if (el.filterType.value) q.set("entityType", el.filterType.value);
-    if (el.filterAction.value) q.set("action", el.filterAction.value);
-    if (el.dateFrom.value) q.set("dateFrom", el.dateFrom.value);
-    if (el.dateTo.value) q.set("dateTo", el.dateTo.value);
-    if (el.limit.value) q.set("limit", el.limit.value);
-    if (token) q.set("auth", token);
-    return `/export/webhooks.xlsx?${q.toString()}`;
-  }
-
-  document.getElementById("download").onclick = () => {
-    // Navigate to URL to trigger browser download
-    window.location.href = exportUrl();
   };
 
-  // ...existing code below...
-</script>
+  // Read ?auth= from URL and prefill token
+  const url = new URL(window.location.href);
+  const paramToken = url.searchParams.get("auth");
+  if (paramToken) el.auth.value = paramToken;
 
-  };
+  // Ask the server if a token is required; show banner if so
+  fetch("/config").then(r => r.json()).then(cfg => {
+    if (cfg.protected) el.banner.style.display = "block";
+  }).catch(()=>{});
 
-  function qs(params) {
+  function buildQuery() {
     const q = new URLSearchParams();
-    if (el.filterType.value) q.set("entityType", el.filterType.value);
-    if (el.filterAction.value) q.set("action", el.filterAction.value);
+    if (el.filterType.value) q.set("entityType", el.filterType.value.trim());
+    if (el.filterAction.value) q.set("action", el.filterAction.value.trim());
     if (el.dateFrom.value) q.set("dateFrom", el.dateFrom.value);
     if (el.dateTo.value) q.set("dateTo", el.dateTo.value);
     q.set("limit", el.limit.value || "50");
-    return q.toString();
+    return q;
   }
 
   async function load() {
+    const q = buildQuery();
     const token = el.auth.value.trim();
-    const res = await fetch(`/events?${qs()}`, {
+    const res = await fetch("/events?" + q.toString(), {
       headers: token ? { "x-auth-token": token } : {}
     });
+    if (!res.ok) {
+      el.tbody.innerHTML = `<tr><td colspan="6">Failed to load events (${res.status}). ${res.status===401?'Unauthorized—provide a token.':''}</td></tr>`;
+      return;
+    }
     const events = await res.json();
     el.tbody.innerHTML = "";
+    if (!Array.isArray(events) || events.length === 0) {
+      el.tbody.innerHTML = `<tr><td colspan="6">No events yet. Trigger a webhook and refresh.</td></tr>`;
+      return;
+    }
     for (const e of events) {
       const tr = document.createElement("tr");
       const viewBtn = `<button data-id="${e.id}" class="view">View</button>`;
@@ -131,8 +142,18 @@
     }
   }
 
+  // Excel export URL (honors filters + token)
+  function exportUrl() {
+    const q = buildQuery();
+    const token = el.auth.value.trim();
+    if (token) q.set("auth", token);
+    return "/export/webhooks.xlsx?" + q.toString();
+  }
+
+  // Wire UI
   el.apply.onclick = load;
   el.refresh.onclick = load;
+  el.download.onclick = () => { window.location.href = exportUrl(); };
   setInterval(load, 5000);
 
   document.addEventListener("click", (ev) => {
@@ -145,6 +166,7 @@
   });
   el.closeModal.onclick = () => el.modalBackdrop.style.display = "none";
 
+  // Initial load
   load();
 </script>
 </body>
