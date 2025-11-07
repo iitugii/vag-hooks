@@ -1,59 +1,67 @@
-import { Router } from "express";
-import crypto from "crypto";
-import { storeEvent } from "../services/eventService";
+// src/routes/vagaro.ts
+import express from 'express';
+import { PrismaClient } from '@prisma/client';
 
-const router = Router();
-const SECRET = process.env.VAGARO_WEBHOOK_SECRET || "";
+const router = express.Router();
+const prisma = new PrismaClient();
 
-function verifySignature(rawBody: string, signature?: string) {
-  if (!SECRET) return true;
-  if (!signature) return false;
-  const expected = crypto.createHmac("sha256", SECRET).update(rawBody).digest("hex");
-  return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+// Helper: pull number from possible json paths
+function num(val: unknown): number {
+  const n = typeof val === 'string' ? Number(val) : (typeof val === 'number' ? val : 0);
+  return Number.isFinite(n) ? n : 0;
 }
-router.get("/", (_req, res) => {
-  res.status(200).json({ ok: true, hint: "Use POST for real webhooks." });
-});
 
-router.post("/", async (req, res) => {
+function pick<T = any>(obj: any, path: string[]): T | undefined {
+  return path.reduce<any>((acc, key) => (acc && acc[key] != null ? acc[key] : undefined), obj);
+}
+
+function deriveCashCollected(payload: any): number {
+  // Support either payload.cashAmount or payload.payload.cashAmount (same for amountDue)
+  const cashAmount = num(pick(payload, ['cashAmount']) ?? pick(payload, ['payload','cashAmount']));
+  const amountDue  = num(pick(payload, ['amountDue'])  ?? pick(payload, ['payload','amountDue']));
+  return cashAmount - amountDue;
+}
+
+function deriveDay(createdDateIso?: string): Date {
+  const d = createdDateIso ? new Date(createdDateIso) : new Date();
+  // force pure UTC date (YYYY-MM-DD 00:00:00Z)
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+
+router.post('/', express.json({ limit: '2mb' }), async (req, res) => {
   try {
-    const raw = (req as any).rawBody as string | undefined;
-    if (!raw) return res.status(400).json({ error: "Missing raw body" });
+    const body = req.body || {};
+    const createdDate: string | undefined =
+      (body.createdDate as string) ??
+      (body.payload && body.payload.createdDate as string);
 
-    const sig = (req.headers["x-vagaro-signature"] as string) || undefined;
-    if (!verifySignature(raw, sig)) return res.status(401).json({ error: "Invalid signature" });
+    const record = await prisma.webhookEvent.create({
+      data: {
+        eventId: String(body.id ?? ''),
+        entityType: String(body.type ?? ''),
+        action: String(body.action ?? ''),
+        businessIds: Array.isArray(body.businessIds)
+          ? body.businessIds.map(String)
+          : (Array.isArray(body.payload?.businessIds) ? body.payload.businessIds.map(String) : []),
+        createdDate: createdDate ? new Date(createdDate) : new Date(),
+        receivedAt: new Date(),
+        rawBody: JSON.stringify(body),
+        headers: req.headers as any,
+        payload: body as any,
+        sourceIp: (req.headers['x-forwarded-for'] as string) || req.ip || '',
+        userAgent: req.get('user-agent') || '',
 
-    const body = (req as any).body || {};
-    const batch = Array.isArray(body) ? body : [body];
-    const results: any[] = [];
+        // Cash + day fields
+        cash_collected: deriveCashCollected(body),
+        day: deriveDay(createdDate),
+      },
+    });
 
-    for (const item of batch) {
-      const eventId = item.id || item.eventId || crypto.createHash("sha1").update(raw + Math.random()).digest("hex");
-      const entityType = item.type || item.entityType || "unknown";
-      const action = item.action || "unknown";
-      const createdDate = item.createdDate || new Date().toISOString();
-      const payload = item.payload ?? item;
-      const businessIds = item.businessIds || payload?.businessIds || [];
-
-      // Derived field: cash collected = cashamount - amountdue
-      if (payload && typeof payload.cashamount === "number" && typeof payload.amountdue === "number") {
-        payload.cash_collected = Math.max(0, payload.cashamount - payload.amountdue);
-      }
-
-      const rec = await storeEvent({
-        eventId, entityType, action, businessIds, createdDate,
-        rawBody: raw, headers: req.headers, payload, sourceIp: req.ip,
-        userAgent: req.headers["user-agent"],
-      });
-
-      results.push({ id: rec.id, eventId: rec.eventId });
-    }
-
-    res.json({ ok: true, stored: results.length, results });
-  } catch (_e: any) {
-  // Generic error to avoid leaking internals
-  return res.status(500).json({ error: "Internal error" });
-}
+    res.status(200).json({ ok: true, id: record.id });
+  } catch (err) {
+    console.error('Webhook insert failed:', err);
+    res.status(500).json({ ok: false, error: 'insert_failed' });
+  }
 });
 
 export default router;
