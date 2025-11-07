@@ -11,6 +11,7 @@ import vagaroRouter from "./routes/vagaro";
 import { logger } from "./utils/logger";
 import { prisma } from "./lib/prisma";
 import dashboardRouter from "./routes/dashboard"; // requires you already created src/routes/dashboard.ts
+import metricsRouter from "./routes/metrics";
 
 const app = express();
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
@@ -45,6 +46,7 @@ app.use("/health", healthRouter);
 app.use("/events", gate, eventsRouter);        // gated if DASH_TOKEN is set
 app.use("/dashboard", gate, dashboardRouter);  // gated if DASH_TOKEN is set
 app.use("/export", gate, exportRouter);        // gated if DASH_TOKEN is set
+app.use("/metrics", gate, metricsRouter);      // gated if DASH_TOKEN is set
 app.use("/webhooks/vagaro", vagaroRouter);
 
 // Inline DB check (kept for easy verification)
