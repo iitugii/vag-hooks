@@ -50,9 +50,10 @@ router.post("/", async (req, res) => {
     }
 
     res.json({ ok: true, stored: results.length, results });
-  } catch (e: any) {
-    res.status(500).json({ error: e?.message || "Unknown error" });
-  }
+  } catch (_e: any) {
+  // Generic error to avoid leaking internals
+  return res.status(500).json({ error: "Internal error" });
+}
 });
 
 export default router;

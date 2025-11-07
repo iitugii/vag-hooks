@@ -1,73 +1,129 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Vagaro Webhooks Dashboard</title>
-  <style>
-    body {
-      font-family: system-ui, sans-serif;
-      margin: 2rem;
-      background: #f7f7f7;
-      color: #333;
-    }
-    h1 { color: #444; }
-    table {
-      border-collapse: collapse;
-      width: 100%;
-      background: #fff;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-    }
-    th, td {
-      padding: 0.6rem 1rem;
-      border-bottom: 1px solid #ddd;
-    }
-    th {
-      background: #fafafa;
-      text-align: left;
-    }
-    tbody tr:hover {
-      background: #f0f8ff;
-    }
-    code { font-size: 0.9em; background: #eef; padding: 0.2em 0.4em; border-radius: 3px; }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Vagaro Webhooks Dashboard</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem; background:#f7f7f7; color:#333; }
+  h1 { color:#444; margin-bottom: .5rem; }
+  .controls { display:flex; gap:.5rem; flex-wrap:wrap; margin: 1rem 0; }
+  input, select, button { padding:.5rem .7rem; border:1px solid #ccc; border-radius:8px; background:#fff; }
+  table { border-collapse: collapse; width: 100%; background:#fff; box-shadow:0 2px 6px rgba(0,0,0,.08); }
+  th, td { padding:.6rem 1rem; border-bottom:1px solid #eee; font-size:14px; }
+  th { background:#fafafa; text-align:left; }
+  tbody tr:hover { background:#f0f8ff; }
+  .pill { padding:.2rem .5rem; border-radius:999px; background:#eef; }
+  .right { text-align:right; }
+  .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.5); display:none; align-items:center; justify-content:center; }
+  .modal { width:min(900px, 95vw); background:#fff; border-radius:12px; padding:1rem; box-shadow:0 6px 24px rgba(0,0,0,.2); }
+  pre { max-height:60vh; overflow:auto; background:#0b1020; color:#e6f1ff; padding:1rem; border-radius:8px; }
+  .row { display:flex; gap:.5rem; align-items:center; }
+</style>
 </head>
 <body>
-  <h1>Vagaro Webhooks Received</h1>
-  <p>This table updates automatically every 5 seconds.</p>
+  <h1>Vagaro Webhooks</h1>
+  <div class="controls">
+    <input id="filterType" placeholder="entityType (e.g., customer, appointment)" />
+    <input id="filterAction" placeholder="action (e.g., updated)" />
+    <input id="dateFrom" type="date" />
+    <input id="dateTo" type="date" />
+    <input id="limit" type="number" min="1" max="200" value="50" style="width:90px" />
+    <input id="auth" placeholder="auth token (if required)" />
+    <button id="apply">Apply</button>
+    <button id="refresh">Refresh</button>
+  </div>
+
   <table id="eventsTable">
     <thead>
       <tr>
         <th>Event ID</th>
         <th>Type</th>
         <th>Action</th>
-        <th>Created Date</th>
-        <th>Received At</th>
+        <th>Created</th>
+        <th>Received</th>
+        <th class="right">Payload</th>
       </tr>
     </thead>
     <tbody></tbody>
   </table>
 
-  <script>
-    async function loadEvents() {
-      const res = await fetch("/events?limit=50");
-      const events = await res.json();
-      const tbody = document.querySelector("#eventsTable tbody");
-      tbody.innerHTML = "";
-      for (const e of events) {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td><code>${e.eventId}</code></td>
-          <td>${e.entityType}</td>
-          <td>${e.action}</td>
-          <td>${new Date(e.createdDate).toLocaleString()}</td>
-          <td>${new Date(e.receivedAt).toLocaleString()}</td>
-        `;
-        tbody.appendChild(tr);
-      }
+  <div class="modal-backdrop" id="modalBackdrop">
+    <div class="modal">
+      <div class="row" style="justify-content:space-between;">
+        <strong id="modalTitle">Payload</strong>
+        <button id="closeModal">Close</button>
+      </div>
+      <pre id="modalPre"></pre>
+    </div>
+  </div>
+
+<script>
+  const el = {
+    tbody: document.querySelector("#eventsTable tbody"),
+    filterType: document.getElementById("filterType"),
+    filterAction: document.getElementById("filterAction"),
+    dateFrom: document.getElementById("dateFrom"),
+    dateTo: document.getElementById("dateTo"),
+    limit: document.getElementById("limit"),
+    auth: document.getElementById("auth"),
+    apply: document.getElementById("apply"),
+    refresh: document.getElementById("refresh"),
+    modalBackdrop: document.getElementById("modalBackdrop"),
+    modalPre: document.getElementById("modalPre"),
+    modalTitle: document.getElementById("modalTitle"),
+    closeModal: document.getElementById("closeModal"),
+  };
+
+  function qs(params) {
+    const q = new URLSearchParams();
+    if (el.filterType.value) q.set("entityType", el.filterType.value);
+    if (el.filterAction.value) q.set("action", el.filterAction.value);
+    if (el.dateFrom.value) q.set("dateFrom", el.dateFrom.value);
+    if (el.dateTo.value) q.set("dateTo", el.dateTo.value);
+    q.set("limit", el.limit.value || "50");
+    return q.toString();
+  }
+
+  async function load() {
+    const token = el.auth.value.trim();
+    const res = await fetch(`/events?${qs()}`, {
+      headers: token ? { "x-auth-token": token } : {}
+    });
+    const events = await res.json();
+    el.tbody.innerHTML = "";
+    for (const e of events) {
+      const tr = document.createElement("tr");
+      const viewBtn = `<button data-id="${e.id}" class="view">View</button>`;
+      tr.innerHTML = `
+        <td><code>${e.eventId}</code></td>
+        <td><span class="pill">${e.entityType}</span></td>
+        <td>${e.action}</td>
+        <td>${new Date(e.createdDate).toLocaleString()}</td>
+        <td>${new Date(e.receivedAt).toLocaleString()}</td>
+        <td class="right">${viewBtn}</td>
+      `;
+      tr.dataset.payload = JSON.stringify(e.payload, null, 2);
+      tr.dataset.title = `${e.entityType}.${e.action} — ${e.eventId}`;
+      el.tbody.appendChild(tr);
     }
-    loadEvents();
-    setInterval(loadEvents, 5000);
-  </script>
+  }
+
+  el.apply.onclick = load;
+  el.refresh.onclick = load;
+  setInterval(load, 5000);
+
+  document.addEventListener("click", (ev) => {
+    const btn = ev.target.closest("button.view");
+    if (!btn) return;
+    const row = btn.closest("tr");
+    el.modalTitle.textContent = row.dataset.title || "Payload";
+    el.modalPre.textContent = row.dataset.payload || "{}";
+    el.modalBackdrop.style.display = "flex";
+  });
+  el.closeModal.onclick = () => el.modalBackdrop.style.display = "none";
+
+  load();
+</script>
 </body>
 </html>
