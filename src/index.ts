@@ -2,6 +2,7 @@ import express from "express";
 import morgan from "morgan";
 import cors from "cors";
 import path from "path";
+import exportRouter from "./routes/export";
 
 import { rawBody } from "./middleware/rawBody";
 import healthRouter from "./routes/health";
