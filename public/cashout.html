@@ -1,176 +1,252 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Cashout Calendar</title>
   <style>
+    :root {
+      --bg: #f7f7fb;
+      --fg: #1f2328;
+      --muted: #6b7280;
+      --line: #e5e7eb;
+      --accent: #111827;
+      --success: #059669;
+      --card: #ffffff;
+    }
+    * { box-sizing: border-box; }
     body {
-      font-family: system-ui, sans-serif;
-      background: #f9f9f9;
-      margin: 0;
-      padding: 0;
-      color: #222;
+      margin: 0; background: var(--bg); color: var(--fg);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji","Segoe UI Emoji";
     }
-
     header {
-      text-align: center;
-      padding: 1rem;
-      background: #222;
-      color: white;
+      display:flex; align-items:center; justify-content:space-between;
+      gap:12px; padding:16px; background: var(--accent); color:#fff;
     }
-
-    .calendar {
-      display: grid;
-      grid-template-columns: repeat(7, 1fr);
-      gap: 1px;
-      background: #ccc;
-      margin: 1rem;
-      border: 1px solid #ccc;
+    .title { margin:0; font-size:1.25rem; font-weight:700; }
+    .actions { display:flex; gap:8px; align-items:center; }
+    .token {
+      border:1px solid #374151; background:#111827; color:#fff; padding:8px 10px; border-radius:8px; min-width:220px;
     }
-
-    .day {
-      background: white;
-      min-height: 90px;
-      padding: 6px;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      font-size: 0.9rem;
+    .btn {
+      border:0; background:#374151; color:#fff; padding:8px 12px; border-radius:8px; cursor:pointer;
     }
-
-    .day-number {
-      font-weight: bold;
+    .btn:hover { background:#4b5563; }
+    .btn-link {
+      background:#10b981; color:#072; border:0; padding:8px 12px; border-radius:8px; cursor:pointer; color:#032d1f;
+      background:#a7f3d0;
     }
-
-    .cash-amount {
-      color: green;
-      font-weight: bold;
-      font-size: 0.95rem;
+    .wrap { max-width:1100px; margin:16px auto; padding:0 16px 32px; }
+    .nav {
+      display:flex; justify-content:space-between; align-items:center; gap:12px; margin:12px 0 8px 0;
     }
-
-    .empty {
-      background: #f2f2f2;
+    .month-label { font-size:1.25rem; font-weight:700; }
+    .grid {
+      display:grid; grid-template-columns: repeat(7, 1fr); border:1px solid var(--line); background:var(--line);
+      border-radius:10px; overflow:hidden;
     }
-
-    .month-nav {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 1rem;
-      margin: 1rem 0;
+    .weekday {
+      background:#f3f4f6; color:#111827; padding:10px; font-weight:600; text-align:center; border-right:1px solid var(--line);
     }
-
-    button {
-      cursor: pointer;
-      background: #222;
-      color: white;
-      border: none;
-      padding: 0.5rem 1rem;
-      border-radius: 4px;
+    .weekday:last-child { border-right:0; }
+    .cell {
+      background: var(--card); min-height:110px; padding:8px; display:flex; flex-direction:column; border-right:1px solid var(--line); border-top:1px solid var(--line);
     }
-
-    button:hover {
-      background: #444;
+    .cell:nth-child(7n) { border-right:0; }
+    .cell.empty { background:#fafafa; }
+    .daynum { font-weight:700; font-size:0.95rem; color:var(--muted); }
+    .amt { margin-top:auto; font-weight:800; color: var(--success); font-variant-numeric: tabular-nums; }
+    .subtle { color: var(--muted); font-size:0.9rem; }
+    .topbar {
+      display:flex; gap:8px; align-items:center; flex-wrap:wrap;
     }
+    .link {
+      text-decoration:none; color:#fff; background:#2563eb; padding:8px 12px; border-radius:8px;
+    }
+    .link:hover { background:#1d4ed8; }
   </style>
 </head>
 <body>
   <header>
-    <h1 id="month-title">Cashout Calendar</h1>
+    <h1 class="title">Cashout Calendar</h1>
+    <div class="actions">
+      <input id="tokenInput" class="token" type="text" placeholder="Dashboard token (DASH_TOKEN)"/>
+      <button id="applyToken" class="btn">Apply Token</button>
+      <a id="backToDash" class="link" href="/dashboard">← Back to Dashboard</a>
+    </div>
   </header>
 
-  <div class="month-nav">
-    <button id="prev">← Prev</button>
-    <button id="next">Next →</button>
+  <div class="wrap">
+    <div class="nav">
+      <div class="topbar">
+        <button id="prev" class="btn">← Previous</button>
+        <button id="today" class="btn">Today</button>
+        <button id="next" class="btn">Next →</button>
+      </div>
+      <div class="month-label" id="monthLabel">Loading…</div>
+    </div>
+
+    <!-- Weekday headers -->
+    <div class="grid" id="weekdayRow"></div>
+    <!-- Calendar grid -->
+    <div class="grid" id="calendarGrid"></div>
+
+    <p class="subtle">Totals reflect <strong>cashAmount − amountDue</strong> summed per day.</p>
   </div>
 
-  <div id="calendar" class="calendar"></div>
-
   <script>
-    const calendar = document.getElementById('calendar');
-    const title = document.getElementById('month-title');
-    let currentYear, currentMonth;
+    // ---------- Auth handling ----------
+    function getQueryParam(name) {
+      const url = new URL(window.location.href);
+      return url.searchParams.get(name);
+    }
+    function getAuthToken() {
+      return getQueryParam('auth') || localStorage.getItem('DASH_TOKEN') || '';
+    }
+    function setAuthToken(token) {
+      if (token) localStorage.setItem('DASH_TOKEN', token);
+    }
 
-    async function fetchData(year, month) {
-      const res = await fetch(`/cashout/data?year=${year}&month=${month}`);
+    const tokenInput = document.getElementById('tokenInput');
+    const applyTokenBtn = document.getElementById('applyToken');
+    const backToDash = document.getElementById('backToDash');
+
+    // Init token UI
+    (function initToken() {
+      const t = getAuthToken();
+      tokenInput.value = t;
+      const dashUrl = t ? `/dashboard?auth=${encodeURIComponent(t)}` : '/dashboard';
+      backToDash.href = dashUrl;
+    })();
+
+    applyTokenBtn.addEventListener('click', () => {
+      const t = tokenInput.value.trim();
+      setAuthToken(t);
+      const url = new URL(window.location.href);
+      if (t) url.searchParams.set('auth', t); else url.searchParams.delete('auth');
+      window.location.href = url.toString();
+    });
+
+    // ---------- Calendar rendering ----------
+    const weekdayRow = document.getElementById('weekdayRow');
+    const grid = document.getElementById('calendarGrid');
+    const monthLabel = document.getElementById('monthLabel');
+    const prevBtn = document.getElementById('prev');
+    const nextBtn = document.getElementById('next');
+    const todayBtn = document.getElementById('today');
+
+    // Sun–Sat labels (US-style)
+    const WEEKDAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+    // Build weekday header row once
+    function renderWeekdayHeader() {
+      weekdayRow.innerHTML = '';
+      for (const w of WEEKDAYS) {
+        const el = document.createElement('div');
+        el.className = 'weekday';
+        el.textContent = w;
+        weekdayRow.appendChild(el);
+      }
+    }
+
+    let viewYear, viewMonth; // 1-based month
+
+    function firstOfMonth(y, m1) { return new Date(y, m1 - 1, 1); }
+    function daysInMonth(y, m1) { return new Date(y, m1, 0).getDate(); }
+
+    async function fetchMonthData(year, month) {
+      const auth = getAuthToken();
+      const res = await fetch(`/cashout/data?year=${year}&month=${month}`, {
+        headers: auth ? { 'x-auth-token': auth } : {}
+      });
+      if (!res.ok) throw new Error('Failed to load data');
       const { data } = await res.json();
-      return data;
+      // Normalize into yyyy-mm-dd -> total map
+      const map = Object.create(null);
+      for (const item of data) {
+        // item.day is ISO string; keep only date part in UTC
+        const key = (typeof item.day === 'string'
+          ? item.day
+          : new Date(item.day).toISOString()).slice(0,10);
+        map[key] = Number(item.total || 0);
+      }
+      return map;
     }
 
-    function buildCalendar(year, month, data) {
-      calendar.innerHTML = '';
-      const firstDay = new Date(year, month - 1, 1);
-      const lastDay = new Date(year, month, 0);
-      const startDay = firstDay.getDay();
-      const daysInMonth = lastDay.getDate();
+    function fmtMonthLabel(y, m1) {
+      return new Date(y, m1 - 1, 1).toLocaleString(undefined, { month: 'long', year: 'numeric' });
+    }
 
-      title.textContent = `${firstDay.toLocaleString('default', { month: 'long' })} ${year}`;
+    async function renderCalendar(y, m1) {
+      monthLabel.textContent = fmtMonthLabel(y, m1);
+      grid.innerHTML = '';
 
-      // fill blanks for days before start
-      for (let i = 0; i < startDay; i++) {
-        const div = document.createElement('div');
-        div.className = 'day empty';
-        calendar.appendChild(div);
+      const first = firstOfMonth(y, m1);
+      const startDow = first.getDay(); // 0=Sun
+      const dim = daysInMonth(y, m1);
+
+      const totals = await fetchMonthData(y, m1);
+
+      // Leading blanks
+      for (let i = 0; i < startDow; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell empty';
+        grid.appendChild(cell);
       }
 
-      for (let d = 1; d <= daysInMonth; d++) {
-        const div = document.createElement('div');
-        div.className = 'day';
-        const date = new Date(Date.UTC(year, month - 1, d)).toISOString().split('T')[0];
-        const entry = data.find(item => item.day.startsWith(date));
-        const cash = entry ? `$${(entry.total || 0).toFixed(2)}` : '';
+      // Days
+      for (let d = 1; d <= dim; d++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        const yyyy = y;
+        const mm = String(m1).padStart(2,'0');
+        const dd = String(d).padStart(2,'0');
+        const key = `${yyyy}-${mm}-${dd}`;
+        const amt = totals[key] || 0;
 
-        div.innerHTML = `
-          <div class="day-number">${d}</div>
-          <div class="cash-amount">${cash}</div>
+        cell.innerHTML = `
+          <div class="daynum">${d}</div>
+          <div class="amt">${amt ? ('$' + amt.toFixed(2)) : ''}</div>
         `;
-        calendar.appendChild(div);
+        grid.appendChild(cell);
       }
 
-      // fill blanks for remainder of grid
-      const totalCells = startDay + daysInMonth;
-      const remainder = 7 - (totalCells % 7);
-      if (remainder < 7) {
-        for (let i = 0; i < remainder; i++) {
-          const div = document.createElement('div');
-          div.className = 'day empty';
-          calendar.appendChild(div);
-        }
+      // Trailing blanks to complete the last week row (up to 42 cells total with header separate)
+      const cellsSoFar = startDow + dim;
+      const remainder = (7 - (cellsSoFar % 7)) % 7;
+      for (let i = 0; i < remainder; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell empty';
+        grid.appendChild(cell);
       }
     }
 
-    async function loadCalendar(year, month) {
-      const data = await fetchData(year, month);
-      buildCalendar(year, month, data);
-    }
-
-    function init() {
+    function setViewToToday() {
       const now = new Date();
-      currentYear = now.getFullYear();
-      currentMonth = now.getMonth() + 1;
-      loadCalendar(currentYear, currentMonth);
+      viewYear = now.getFullYear();
+      viewMonth = now.getMonth() + 1;
     }
 
-    document.getElementById('prev').onclick = () => {
-      currentMonth--;
-      if (currentMonth < 1) {
-        currentMonth = 12;
-        currentYear--;
-      }
-      loadCalendar(currentYear, currentMonth);
-    };
+    prevBtn.addEventListener('click', async () => {
+      viewMonth--;
+      if (viewMonth < 1) { viewMonth = 12; viewYear--; }
+      await renderCalendar(viewYear, viewMonth);
+    });
+    nextBtn.addEventListener('click', async () => {
+      viewMonth++;
+      if (viewMonth > 12) { viewMonth = 1; viewYear++; }
+      await renderCalendar(viewYear, viewMonth);
+    });
+    todayBtn.addEventListener('click', async () => {
+      setViewToToday();
+      await renderCalendar(viewYear, viewMonth);
+    });
 
-    document.getElementById('next').onclick = () => {
-      currentMonth++;
-      if (currentMonth > 12) {
-        currentMonth = 1;
-        currentYear++;
-      }
-      loadCalendar(currentYear, currentMonth);
-    };
-
-    init();
+    (async function init() {
+      renderWeekdayHeader();
+      setViewToToday();
+      await renderCalendar(viewYear, viewMonth);
+    })();
   </script>
 </body>
 </html>
