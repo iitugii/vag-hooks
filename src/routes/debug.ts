@@ -6,62 +6,13 @@ const prisma = new PrismaClient();
 
 function requireToken(req: express.Request) {
   const token = (req.header("x-auth-token") || "").trim();
-  if (!process.env.DASH_TOKEN || token !== process.env.DASH_TOKEN) {
-    return false;
-  }
-  return true;
+  return !!process.env.DASH_TOKEN && token === process.env.DASH_TOKEN;
 }
-
-/**
- * GET /debug-cash?date=YYYY-MM-DD  (existing audit; keeps working)
- */
-router.get("/debug-cash", async (req, res) => {
-  if (!requireToken(req)) return res.status(403).json({ ok: false, error: "unauthorized" });
-
-  const date = (req.query.date as string) || new Date().toISOString().slice(0, 10);
-
-  const rows = await prisma.$queryRaw<any[]>`
-    WITH base AS (
-      SELECT
-        id,
-        payload,
-        COALESCE("createdDate","receivedAt") AT TIME ZONE 'UTC' AT TIME ZONE 'America/New_York' AS ts_local
-      FROM "WebhookEvent"
-    )
-    SELECT
-      id,
-      to_char(ts_local, 'YYYY-MM-DD HH24:MI:SS') AS ts_local,
-      payload
-    FROM base
-    WHERE ts_local::date = ${date}::date
-    ORDER BY ts_local ASC;
-  `;
-
-  let cashOnly = 0;
-  const audit = rows.map(r => {
-    const p = r.payload || {};
-    const inner = p.payload || {};
-    const cash =
-      num(p.cashAmount ?? inner.cashAmount) ||
-      num(p.cash ?? inner.cash) ||
-      num(p.cash_in ?? inner.cash_in) ||
-      num(p.tenderAmount ?? inner.tenderAmount);
-    cashOnly += cash;
-    return {
-      id: r.id,
-      ts_local: r.ts_local,
-      cashAmount: num(p.cashAmount ?? inner.cashAmount),
-      cash_alt: cash
-    };
-  });
-
-  res.json({ ok: true, date, count: audit.length, totals: { cash_only: +cashOnly.toFixed(2) }, audit });
-});
 
 /**
  * GET /debug-cash-list?date=YYYY-MM-DD
  * Lists ONLY rows where cash != 0 and shows amountCash, discount, tip, amountDue.
- * Pulls from both top-level payload and payload.payload.
+ * Works for both top-level and nested payload.payload.
  */
 router.get("/debug-cash-list", async (req, res) => {
   if (!requireToken(req)) return res.status(403).json({ ok: false, error: "unauthorized" });
@@ -75,12 +26,7 @@ router.get("/debug-cash-list", async (req, res) => {
     discount: number;
     tip: number;
     amount_due: number;
-    sources: {
-      cashKey: string;
-      discountKey?: string;
-      tipKey?: string;
-      amountDueKey?: string;
-    };
+    sources: { cashKey: string; discountKey?: string; tipKey?: string; amountDueKey?: string };
   };
 
   const rows = await prisma.$queryRaw<Row[]>`
@@ -100,7 +46,7 @@ router.get("/debug-cash-list", async (req, res) => {
       id,
       to_char(ts_local, 'YYYY-MM-DD HH24:MI:SS') AS ts_local,
 
-      /* cash variants */
+      /* cash variants, non-zero only */
       COALESCE(
         NULLIF((payload->>'amountCash')::numeric, 0),
         NULLIF((payload->'payload'->>'amountCash')::numeric, 0),
@@ -135,14 +81,14 @@ router.get("/debug-cash-list", async (req, res) => {
         0
       )::double precision AS tip,
 
-      /* amountDue */
+      /* amountDue variants */
       COALESCE(
         (payload->>'amountDue')::numeric,
         (payload->'payload'->>'amountDue')::numeric,
         0
       )::double precision AS amount_due,
 
-      /* quick source hints (strings) */
+      /* quick source hints */
       jsonb_build_object(
         'cashKey',
         CASE
@@ -203,16 +149,5 @@ router.get("/debug-cash-list", async (req, res) => {
 
   res.json({ ok: true, date, count: rows.length, rows });
 });
-
-function num(v: any): number {
-  if (v == null) return 0;
-  if (typeof v === "number") return Number.isFinite(v) ? v : 0;
-  if (typeof v === "string") {
-    const cleaned = v.replace(/[^0-9.\-]/g, "");
-    const n = Number(cleaned);
-    return Number.isFinite(n) ? n : 0;
-  }
-  return 0;
-}
 
 export default router;
