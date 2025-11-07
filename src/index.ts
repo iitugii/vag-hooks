@@ -6,11 +6,14 @@ import healthRouter from "./routes/health";
 import eventsRouter from "./routes/events";
 import vagaroRouter from "./routes/vagaro";
 import { logger } from "./utils/logger";
+import dashboardRouter from "./routes/dashboard.js";
 
 const app = express();
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 
 app.use("/webhooks/vagaro", rawBody);
+app.use("/dashboard", dashboardRouter);
+app.use(express.static("public")); // optional for serving assets
 
 app.use(cors());
 app.use(morgan("tiny"));

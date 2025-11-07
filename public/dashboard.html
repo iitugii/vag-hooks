@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vagaro Webhooks Dashboard</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      margin: 2rem;
+      background: #f7f7f7;
+      color: #333;
+    }
+    h1 { color: #444; }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      background: #fff;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+    th, td {
+      padding: 0.6rem 1rem;
+      border-bottom: 1px solid #ddd;
+    }
+    th {
+      background: #fafafa;
+      text-align: left;
+    }
+    tbody tr:hover {
+      background: #f0f8ff;
+    }
+    code { font-size: 0.9em; background: #eef; padding: 0.2em 0.4em; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <h1>Vagaro Webhooks Received</h1>
+  <p>This table updates automatically every 5 seconds.</p>
+  <table id="eventsTable">
+    <thead>
+      <tr>
+        <th>Event ID</th>
+        <th>Type</th>
+        <th>Action</th>
+        <th>Created Date</th>
+        <th>Received At</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    async function loadEvents() {
+      const res = await fetch("/events?limit=50");
+      const events = await res.json();
+      const tbody = document.querySelector("#eventsTable tbody");
+      tbody.innerHTML = "";
+      for (const e of events) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td><code>${e.eventId}</code></td>
+          <td>${e.entityType}</td>
+          <td>${e.action}</td>
+          <td>${new Date(e.createdDate).toLocaleString()}</td>
+          <td>${new Date(e.receivedAt).toLocaleString()}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+    }
+    loadEvents();
+    setInterval(loadEvents, 5000);
+  </script>
+</body>
+</html>
