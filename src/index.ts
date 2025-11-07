@@ -52,7 +52,7 @@ app.use("/export", gate, exportRouter);        // gated if DASH_TOKEN is set
 app.use("/metrics", gate, metricsRouter);      // gated if DASH_TOKEN is set
 app.use("/cashout", gate, cashoutRouter);      // gated if DASH_TOKEN is set
 app.use("/webhooks/vagaro", vagaroRouter);
-app.use("/debug", debugRouter);
+app.use("/", debugRouter);
 
 // Inline DB check (kept for easy verification)
 app.get("/health/db", async (_req, res) => {
