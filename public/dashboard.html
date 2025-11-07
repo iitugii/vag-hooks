@@ -31,6 +31,19 @@
 <body>
   <div id="banner" class="banner">🔒 Protected: a token is required to view and export events.</div>
   <h1>Vagaro Webhooks</h1>
+  <!-- replace simple link with this script-driven link -->
+<p class="sub"><a id="cashoutLink" href="/cashout">Cashout Calendar</a></p>
+<script>
+  // after defining `el.auth` in your script:
+  const cashoutLink = document.getElementById("cashoutLink");
+  function updateCashoutLink(){
+    const t = (document.getElementById("auth")?.value || "").trim();
+    cashoutLink.href = t ? `/cashout?auth=${encodeURIComponent(t)}` : `/cashout`;
+  }
+  updateCashoutLink();
+  document.getElementById("auth")?.addEventListener("input", updateCashoutLink);
+</script>
+
   <p class="sub">Recent events from your Railway + Postgres capture service.</p>
 
   <div class="controls">
