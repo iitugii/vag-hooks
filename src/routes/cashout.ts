@@ -5,12 +5,16 @@ import path from 'path';
 const router = express.Router();
 const prisma = new PrismaClient();
 
+// Serve the HTML
 router.get('/', (_req, res) => {
   res.sendFile(path.join(__dirname, '../../public/cashout.html'));
 });
 
 type CashRow = { day_local: string; total: number };
 
+// GET /cashout/data?year=YYYY&month=MM
+// Sums CASH ONLY (no subtraction) using multiple common key names.
+// Buckets by local day (America/New_York).
 router.get('/data', async (req, res) => {
   try {
     const now = new Date();
@@ -18,8 +22,6 @@ router.get('/data', async (req, res) => {
     const month = parseInt(req.query.month as string) || now.getMonth() + 1;
     const monthStr = String(month).padStart(2, '0');
 
-    // cash: cashAmount | cash | cash_in | tenderAmount
-    // change: changeDue | change | change_out | changeGiven
     const rows = await prisma.$queryRaw<CashRow[]>`
       WITH base AS (
         SELECT
@@ -43,16 +45,6 @@ router.get('/data', async (req, res) => {
                     (payload->'payload'->>'cash_in')::numeric,
                     (payload->>'tenderAmount')::numeric,
                     (payload->'payload'->>'tenderAmount')::numeric,
-                    0)
-          -
-          COALESCE( (payload->>'changeDue')::numeric,
-                    (payload->'payload'->>'changeDue')::numeric,
-                    (payload->>'change')::numeric,
-                    (payload->'payload'->>'change')::numeric,
-                    (payload->>'change_out')::numeric,
-                    (payload->'payload'->>'change_out')::numeric,
-                    (payload->>'changeGiven')::numeric,
-                    (payload->'payload'->>'changeGiven')::numeric,
                     0)
         )::double precision AS total
       FROM month_scope

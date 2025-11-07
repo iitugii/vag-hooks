@@ -15,11 +15,7 @@ function num(v: any): number {
   return 0;
 }
 
-/**
- * GET /debug-cash?date=YYYY-MM-DD
- * Token-protected (x-auth-token == DASH_TOKEN).
- * Shows per-row money fields and totals for multiple key variants.
- */
+/** GET /debug-cash?date=YYYY-MM-DD  (x-auth-token == DASH_TOKEN) */
 router.get("/debug-cash", async (req, res) => {
   const token = (req.header("x-auth-token") || "").trim();
   if (!process.env.DASH_TOKEN || token !== process.env.DASH_TOKEN) {
@@ -45,46 +41,25 @@ router.get("/debug-cash", async (req, res) => {
     ORDER BY ts_local ASC;
   `;
 
-  let sumCashA = 0, sumChangeA = 0;
-  let sumCashB = 0, sumChangeB = 0;
+  let cashOnly = 0;
 
   const audit = rows.map(r => {
     const p = r.payload || {};
     const inner = p.payload || {};
 
-    // Variant A (what we used): cashAmount - changeDue
-    const cashAmountA = num(p.cashAmount ?? inner.cashAmount);
-    const changeDueA  = num(p.changeDue  ?? inner.changeDue);
+    const cash =
+      num(p.cashAmount ?? inner.cashAmount) ||
+      num(p.cash ?? inner.cash) ||
+      num(p.cash_in ?? inner.cash_in) ||
+      num(p.tenderAmount ?? inner.tenderAmount);
 
-    // Variant B (alt names seen in various systems): cash - change
-    const cashB   = num(p.cash ?? inner.cash ?? p.cash_in ?? inner.cash_in ?? p.tenderAmount ?? inner.tenderAmount);
-    const changeB = num(p.change ?? inner.change ?? p.change_out ?? inner.change_out ?? p.changeGiven ?? inner.changeGiven);
-
-    sumCashA += cashAmountA;
-    sumChangeA += changeDueA;
-
-    sumCashB += cashB;
-    sumChangeB += changeB;
-
-    // Collect keys containing "cash" or "change" to see actual naming in payload
-    const keysTop = Object.keys(p || {}).filter(k => /cash|change/i.test(k)).slice(0, 12);
-    const keysInner = Object.keys(inner || {}).filter(k => /cash|change/i.test(k)).slice(0, 12);
+    cashOnly += cash;
 
     return {
       id: r.id,
       ts_local: r.ts_local,
-      // Show both variants
-      A_cashAmount: cashAmountA,
-      A_changeDue: changeDueA,
-      A_net: +(cashAmountA - changeDueA).toFixed(2),
-
-      B_cash: cashB,
-      B_change: changeB,
-      B_net: +(cashB - changeB).toFixed(2),
-
-      // quick peek at names present
-      keysTop,
-      keysInner
+      cashAmount: num(p.cashAmount ?? inner.cashAmount),
+      cash_alt: cash, // what we actually sum
     };
   });
 
@@ -93,21 +68,10 @@ router.get("/debug-cash", async (req, res) => {
     date,
     count: audit.length,
     totals: {
-      variant_A: {
-        cash_in: +sumCashA.toFixed(2),
-        change_out: +sumChangeA.toFixed(2),
-        net: +(sumCashA - sumChangeA).toFixed(2),
-      },
-      variant_B: {
-        cash_in: +sumCashB.toFixed(2),
-        change_out: +sumChangeB.toFixed(2),
-        net: +(sumCashB - sumChangeB).toFixed(2),
-      }
+      cash_only: +cashOnly.toFixed(2)
     },
     audit
   });
 });
-
-export default router;
 
 export default router;
