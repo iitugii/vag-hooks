@@ -68,4 +68,3 @@ router.get("/data", async (req, res) => {
 });
 
 export default router;
-s
