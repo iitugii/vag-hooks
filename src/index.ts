@@ -14,6 +14,7 @@ import dashboardRouter from "./routes/dashboard"; // requires you already create
 import metricsRouter from "./routes/metrics";
 import cashoutRouter from "./routes/cashout";
 import debugRouter from "./routes/debug";
+import debugFindRouter from "./routes/debugFind";
 
 
 const app = express();
@@ -46,6 +47,7 @@ app.use(express.static("public"));
 
 // Mount routes
 app.use("/health", healthRouter);
+app.use("/", debugFindRouter); // exposes GET /debug-find-cash
 app.use("/events", gate, eventsRouter);        // gated if DASH_TOKEN is set
 app.use("/dashboard", gate, dashboardRouter);  // gated if DASH_TOKEN is set
 app.use("/export", gate, exportRouter);        // gated if DASH_TOKEN is set
