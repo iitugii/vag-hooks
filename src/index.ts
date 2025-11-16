@@ -1,81 +1,70 @@
-import express from "express";
-import morgan from "morgan";
-import cors from "cors";
+import express, { Request, Response, NextFunction } from "express";
 import path from "path";
-import exportRouter from "./routes/export";
 
-import { rawBody } from "./middleware/rawBody";
-import healthRouter from "./routes/health";
-import eventsRouter from "./routes/events";
 import vagaroRouter from "./routes/vagaro";
-import { logger } from "./utils/logger";
-import { prisma } from "./lib/prisma";
-import dashboardRouter from "./routes/dashboard"; // requires you already created src/routes/dashboard.ts
-import metricsRouter from "./routes/metrics";
+import eventsRouter from "./routes/events";
 import cashoutRouter from "./routes/cashout";
 import debugRouter from "./routes/debug";
 import debugFindRouter from "./routes/debugFind";
+import historicalRouter from "./routes/historical";
+import healthRouter from "./routes/health";
+import dashboardRouter from "./routes/dashboard";
+import exportRouter from "./routes/export";
+import metricsRouter from "./routes/metrics";
 
+import { logger } from "./utils/logger";
+import { rawBody } from "./middleware/rawBody";
 
 const app = express();
-const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 
-// ---------- optional token gate for /events and /dashboard ----------
-const DASH_TOKEN = process.env.DASH_TOKEN || "";
-// Let the frontend know if auth is required
-app.get("/config", (_req, res) => {
-  res.json({ protected: !!DASH_TOKEN });
-});
+// Normal JSON body parsing
+app.use(express.json({ limit: "10mb" }));
 
-function gate(req: express.Request, res: express.Response, next: express.NextFunction) {
-  if (!DASH_TOKEN) return next(); // open access when no token set
-  const token = (req.query.auth as string) || (req.headers["x-auth-token"] as string) || "";
-  if (token === DASH_TOKEN) return next();
-  return res.status(401).json({ error: "Unauthorized" });
-}
-// --------------------------------------------------------------------
+// Static assets
+app.use(
+  express.static(path.join(__dirname, "..", "public"), {
+    maxAge: "1h",
+  })
+);
 
-// Raw body must run before JSON parser on the webhook path
-app.use("/webhooks/vagaro", rawBody);
+// Webhook endpoint (needs raw body)
+app.use("/webhooks/vagaro", rawBody, vagaroRouter);
 
-app.use(cors());
-app.use(morgan("tiny"));
-app.use(express.json());
-
-// Serve static assets (dashboard.html lives in /public)
-app.use(express.static("public"));
-
-// Mount routes
+// Protected + core routes
+app.use("/events", eventsRouter);
+app.use("/cashout", cashoutRouter);
+app.use("/debug-cash-list", debugRouter);
+app.use("/debug-find-cash", debugFindRouter);
+app.use("/historical", historicalRouter);
 app.use("/health", healthRouter);
-app.use("/", debugFindRouter); // exposes GET /debug-find-cash
-app.use("/events", gate, eventsRouter);        // gated if DASH_TOKEN is set
-app.use("/dashboard", gate, dashboardRouter);  // gated if DASH_TOKEN is set
-app.use("/export", gate, exportRouter);        // gated if DASH_TOKEN is set
-app.use("/metrics", gate, metricsRouter);      // gated if DASH_TOKEN is set
-app.use("/cashout", gate, cashoutRouter);      // gated if DASH_TOKEN is set
-app.use("/webhooks/vagaro", vagaroRouter);
-app.use("/", debugRouter);
+app.use("/dashboard", dashboardRouter);
+app.use("/export", exportRouter);
+app.use("/metrics", metricsRouter);
 
-// Inline DB check (kept for easy verification)
-app.get("/health/db", async (_req, res) => {
-  try {
-    await prisma.$queryRaw`SELECT 1`;
-    const rows = await prisma.webhookEvent.count();
-    res.status(200).json({ ok: true, table: "WebhookEvent", rows });
-  } catch (e: any) {
-    res.status(500).json({ ok: false, error: e?.message || "unknown" });
-  }
+// Root health/info
+app.get("/", (req: Request, res: Response) => {
+  res.json({
+    ok: true,
+    message: "vag-hooks service running",
+  });
 });
 
-// Root
-app.get("/", (_req, res) => {
-  res.json({ ok: true, name: "vag-hooks", version: "1.0.0" });
+// Global error handler
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
+  logger.error("[app] Unhandled error", {
+    error: err?.message ?? String(err),
+    stack: err?.stack,
+  });
+
+  if (res.headersSent) return;
+  res.status(500).json({ error: "Internal server error" });
 });
 
-// Error handler
-app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  logger.error(err);
-  res.status(500).json({ error: "Internal Server Error" });
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  logger.info(`vag-hooks server listening on port ${PORT}`);
 });
 
-app.listen(PORT, () => logger.info(`Server listening on :${PORT}`));
+export default app;
