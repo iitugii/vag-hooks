@@ -42,7 +42,7 @@ function requireDashToken(
  * - We can reach the Vagaro API from Railway
  * - Credentials are valid
  *
- * Does NOT return the full token, just a short preview.
+ * On failure, also returns the raw Vagaro response for debugging.
  */
 router.get(
   "/test",
@@ -62,12 +62,15 @@ router.get(
     } catch (err: any) {
       logger.error("[historical] Vagaro connection test failed", {
         error: err?.message ?? String(err),
+        rawResponse: err?.rawResponse ?? null,
+        rawBody: err?.rawBody ?? null,
       });
 
       res.status(500).json({
         ok: false,
         error: "Failed to connect to Vagaro API",
         details: err?.message ?? String(err),
+        vagaroRaw: err?.rawResponse ?? err?.rawBody ?? null,
       });
     }
   }
