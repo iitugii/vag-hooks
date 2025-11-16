@@ -1,5 +1,4 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { getVagaroAccessToken } from "../services/vagaroClient";
 import { logger } from "../utils/logger";
 
 const router = Router();
@@ -38,39 +37,94 @@ function requireDashToken(
 /**
  * GET /historical/test
  *
- * Uses the Vagaro generate-access-token endpoint to verify:
- * - We can reach the Vagaro API from Railway
- * - Credentials are valid
+ * Directly calls the Vagaro token endpoint and returns:
+ * - HTTP status + statusText
+ * - request body we sent
+ * - raw response text
+ * - parsed JSON (if any)
  *
- * On failure, also returns the raw Vagaro response for debugging.
+ * This is a pure debug endpoint so we can see exactly what Vagaro returns.
  */
 router.get(
   "/test",
   requireDashToken,
   async (req: Request, res: Response): Promise<void> => {
-    try {
-      const tokenInfo = await getVagaroAccessToken();
+    const VAGARO_API_BASE =
+      process.env.VAGARO_API_BASE ?? "https://api.vagaro.com/us03/api/v2";
 
-      res.json({
-        ok: true,
-        message: "Successfully connected to Vagaro API",
-        tokenPreview: tokenInfo.token.slice(0, 8) + "...",
-        tokenType: tokenInfo.tokenType ?? null,
-        expiresIn: tokenInfo.expiresIn ?? null,
-        scope: tokenInfo.scope ?? null,
+    const VAGARO_CLIENT_ID = process.env.VAGARO_CLIENT_ID;
+    const VAGARO_CLIENT_SECRET = process.env.VAGARO_CLIENT_SECRET;
+    const VAGARO_SCOPE = process.env.VAGARO_SCOPE ?? "read";
+
+    if (!VAGARO_CLIENT_ID || !VAGARO_CLIENT_SECRET) {
+      res.status(500).json({
+        ok: false,
+        error:
+          "VAGARO_CLIENT_ID and VAGARO_CLIENT_SECRET must be set in environment variables.",
+      });
+      return;
+    }
+
+    const url = `${VAGARO_API_BASE}/merchants/generate-access-token`;
+
+    const requestBody = {
+      clientId: VAGARO_CLIENT_ID,
+      clientSecretKey: VAGARO_CLIENT_SECRET,
+      scope: VAGARO_SCOPE,
+    };
+
+    try {
+      logger.info("[historical/test] Calling Vagaro token endpoint", {
+        url,
+        scope: VAGARO_SCOPE,
+      });
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      const status = response.status;
+      const statusText = response.statusText;
+      const rawBody = await response.text();
+
+      let parsed: unknown = null;
+      if (rawBody) {
+        try {
+          parsed = JSON.parse(rawBody);
+        } catch {
+          parsed = null;
+        }
+      }
+
+      logger.info("[historical/test] Vagaro token endpoint response", {
+        status,
+        statusText,
+        rawBody,
+      });
+
+      res.status(response.ok ? 200 : 500).json({
+        ok: response.ok,
+        status,
+        statusText,
+        url,
+        requestBody,
+        rawBody: rawBody || null,
+        parsed,
       });
     } catch (err: any) {
-      logger.error("[historical] Vagaro connection test failed", {
+      logger.error("[historical/test] Error calling Vagaro token endpoint", {
         error: err?.message ?? String(err),
-        rawResponse: err?.rawResponse ?? null,
-        rawBody: err?.rawBody ?? null,
       });
 
       res.status(500).json({
         ok: false,
-        error: "Failed to connect to Vagaro API",
+        error: "Exception when calling Vagaro token endpoint",
         details: err?.message ?? String(err),
-        vagaroRaw: err?.rawResponse ?? err?.rawBody ?? null,
       });
     }
   }
