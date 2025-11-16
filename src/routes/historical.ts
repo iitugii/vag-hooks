@@ -4,6 +4,7 @@ import {
   listDataLakePaths,
   downloadDataLakeFile,
 } from "../services/vagaroDataLake";
+import { importTransactionsFromDataLake } from "../services/historicalImportService";
 import { logger } from "../utils/logger";
 
 const router = Router();
@@ -173,6 +174,66 @@ router.get(
       res.status(500).json({
         ok: false,
         error: "Failed to preview Data Lake file",
+        details: err?.message ?? String(err),
+      });
+    }
+  }
+);
+
+/**
+ * POST /historical/pull
+ *
+ * Imports historical transaction data from the Data Lake "Transaction details" reports,
+ * *only* to support the Cashout Calendar (cash vs amountDue per day).
+ *
+ * Body JSON:
+ * {
+ *   "startDate": "2024-06-08",   // required, YYYY-MM-DD
+ *   "endDate": "2024-06-30",     // optional, defaults to startDate
+ *   "dryRun": true               // optional, default false
+ * }
+ */
+router.post(
+  "/pull",
+  requireDashToken,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const body = (req.body ?? {}) as {
+        startDate?: string;
+        endDate?: string;
+        dryRun?: boolean;
+      };
+
+      const startDate = body.startDate;
+      const endDate = body.endDate ?? startDate;
+
+      if (!startDate || !endDate) {
+        res.status(400).json({
+          ok: false,
+          error:
+            "startDate is required (YYYY-MM-DD). endDate defaults to startDate if omitted.",
+        });
+        return;
+      }
+
+      const result = await importTransactionsFromDataLake({
+        startDate,
+        endDate,
+        dryRun: Boolean(body.dryRun),
+      });
+
+      res.json({
+        ok: true,
+        ...result,
+      });
+    } catch (err: any) {
+      logger.error("[historical] Failed to pull historical transactions", {
+        error: err?.message ?? String(err),
+      });
+
+      res.status(500).json({
+        ok: false,
+        error: "Failed to pull historical transactions",
         details: err?.message ?? String(err),
       });
     }
