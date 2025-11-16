@@ -14,7 +14,6 @@ export interface DataLakePath {
   isDirectory: boolean;
   contentLength?: number;
   lastModified?: string;
-  [key: string]: unknown;
 }
 
 interface ListPathsResponse {
@@ -38,7 +37,6 @@ function buildFilesystemUrl(params: Record<string, string>): string {
   }
 
   const qp = new URLSearchParams(params);
-  // Append SAS after our own query params
   const url = `${BASE_URL}?${qp.toString()}&${SAS}`;
   return url;
 }
@@ -53,7 +51,7 @@ function buildFileUrl(path: string): string {
     );
   }
 
-  const trimmed = path.replace(/^\/+/, ""); // remove leading slashes
+  const trimmed = path.replace(/^\/+/, "");
   const baseWithPath = `${BASE_URL}/${encodeURIComponent(trimmed)}`;
   const url = `${baseWithPath}?${SAS}`;
   return url;
@@ -89,7 +87,6 @@ export async function listDataLakePaths(
   const res = await fetch(url, {
     method: "GET",
     headers: {
-      // Azure Data Lake Gen2 recommends setting a version, but SAS often works without.
       "x-ms-version": "2020-10-02",
     },
   });
@@ -127,7 +124,6 @@ export async function listDataLakePaths(
       isDirectory: Boolean(p.isDirectory),
       contentLength: p.contentLength,
       lastModified: p.lastModified,
-      ...p,
     })) ?? [];
 
   return paths;
