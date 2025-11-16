@@ -32,8 +32,56 @@ export interface VagaroAccessToken {
 }
 
 /**
+ * Try to find an access token anywhere in the response.
+ * - Checks common fields: access_token, accessToken, token
+ * - Looks under common wrappers: data, result
+ * - Recursively scans nested objects for any key containing "token"
+ */
+function extractTokenAny(json: unknown, depth = 0): string | null {
+  if (!json || typeof json !== "object") return null;
+  if (depth > 5) return null; // safety guard
+
+  const obj = json as Record<string, unknown>;
+
+  // 1. Common direct keys
+  const directKeys = ["access_token", "accessToken", "token"];
+  for (const key of directKeys) {
+    const v = obj[key];
+    if (typeof v === "string" && v.length > 0) {
+      return v;
+    }
+  }
+
+  // 2. Common wrappers
+  for (const wrapper of ["data", "result", "value"]) {
+    const nested = obj[wrapper];
+    if (nested && typeof nested === "object") {
+      const nestedToken = extractTokenAny(nested, depth + 1);
+      if (nestedToken) return nestedToken;
+    }
+  }
+
+  // 3. Any property whose key includes "token"
+  for (const [key, value] of Object.entries(obj)) {
+    if (typeof value === "string" && key.toLowerCase().includes("token")) {
+      if (value.length > 0) return value;
+    }
+  }
+
+  // 4. Recursive scan of nested objects
+  for (const value of Object.values(obj)) {
+    if (value && typeof value === "object") {
+      const nestedToken = extractTokenAny(value, depth + 1);
+      if (nestedToken) return nestedToken;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Request an access token from Vagaro.
- * This is the TS/Node equivalent of the PowerShell sample you pasted.
+ * Mirrors the PowerShell example you got from their docs.
  */
 export async function getVagaroAccessToken(): Promise<VagaroAccessToken> {
   if (!VAGARO_CLIENT_ID || !VAGARO_CLIENT_SECRET) {
@@ -64,48 +112,57 @@ export async function getVagaroAccessToken(): Promise<VagaroAccessToken> {
     body: JSON.stringify(body),
   });
 
+  const status = res.status;
+  const statusText = res.statusText;
   const text = await res.text();
-  let json: RawTokenResponse;
 
-  try {
-    json = text ? (JSON.parse(text) as RawTokenResponse) : {};
-  } catch (err) {
-    logger.error("[vagaroClient] Failed to parse token response JSON", {
-      status: res.status,
-      statusText: res.statusText,
-      rawBody: text,
-    });
-    throw new Error(
-      `Failed to parse Vagaro token response: ${res.status} ${res.statusText}`
-    );
+  let json: RawTokenResponse | null = null;
+
+  if (text) {
+    try {
+      json = JSON.parse(text) as RawTokenResponse;
+    } catch (parseErr) {
+      logger.error("[vagaroClient] Failed to parse token response JSON", {
+        status,
+        statusText,
+        rawBody: text,
+      });
+      const err = new Error(
+        `Failed to parse Vagaro token response: ${status} ${statusText}`
+      );
+      (err as any).rawBody = text;
+      throw err;
+    }
   }
 
   if (!res.ok) {
     logger.error("[vagaroClient] Non-200 response from token endpoint", {
-      status: res.status,
-      statusText: res.statusText,
-      body: json,
+      status,
+      statusText,
+      body: json ?? text,
     });
-    throw new Error(
-      `Vagaro token request failed: ${res.status} ${res.statusText}`
+    const err = new Error(
+      `Vagaro token request failed: ${status} ${statusText}`
     );
+    (err as any).rawResponse = json ?? null;
+    (err as any).rawBody = text ?? null;
+    throw err;
   }
 
-  const token =
-    json.access_token ??
-    json.accessToken ??
-    (json as Record<string, unknown>).token;
-
-  if (!token || typeof token !== "string") {
+  const token = extractTokenAny(json);
+  if (!token) {
     logger.error(
       "[vagaroClient] Token missing in Vagaro response. Full body:",
-      json
+      json ?? text
     );
-    throw new Error("Vagaro token missing in response");
+    const err = new Error("Vagaro token missing in response");
+    (err as any).rawResponse = json ?? null;
+    (err as any).rawBody = text ?? null;
+    throw err;
   }
 
-  const tokenType = json.token_type ?? json.tokenType;
-  const expiresIn = json.expires_in ?? json.expiresIn;
+  const tokenType = json?.token_type ?? json?.tokenType;
+  const expiresIn = json?.expires_in ?? json?.expiresIn;
 
   logger.info("[vagaroClient] Successfully obtained Vagaro access token");
 
@@ -113,6 +170,6 @@ export async function getVagaroAccessToken(): Promise<VagaroAccessToken> {
     token,
     tokenType: typeof tokenType === "string" ? tokenType : undefined,
     expiresIn: typeof expiresIn === "number" ? expiresIn : undefined,
-    scope: typeof json.scope === "string" ? json.scope : undefined,
+    scope: typeof json?.scope === "string" ? json!.scope : undefined,
   };
 }
