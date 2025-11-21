@@ -140,6 +140,27 @@ router.get("/data", async (req, res) => {
           cash_tender,
           card_tender,
           change_due,
+          /* prefer explicit tender arrays (card + cash) then fall back */
+          COALESCE(
+            NULLIF(
+              (COALESCE(NULLIF(tender_array_total, 0), 0)
+               + COALESCE(NULLIF(nested_tender_array_total, 0), 0)
+               + COALESCE(NULLIF(payments_array_total, 0), 0)
+               + COALESCE(NULLIF(nested_payments_array_total, 0), 0)),
+              0
+            ),
+            NULLIF((payload->>'totalAmount')::numeric, 0),
+            NULLIF((payload->'payload'->>'totalAmount')::numeric, 0),
+            NULLIF((payload->>'amountTotal')::numeric, 0),
+            NULLIF((payload->'payload'->>'amountTotal')::numeric, 0),
+            NULLIF((payload->>'amount')::numeric, 0),
+            NULLIF((payload->'payload'->>'amount')::numeric, 0),
+            NULLIF((payload->>'total')::numeric, 0),
+            NULLIF((payload->'payload'->>'total')::numeric, 0),
+            NULLIF((payload->>'tenderAmount')::numeric, 0),
+            NULLIF((payload->'payload'->>'tenderAmount')::numeric, 0),
+            NULLIF((payload->>'amountTendered')::numeric, 0),
+            NULLIF((payload->'payload'->>'amountTendered')::numeric, 0),
           /* total tendered (cash + card) */
           COALESCE(
             (payload->>'totalAmount')::numeric,
