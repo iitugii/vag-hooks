@@ -28,6 +28,7 @@
     .cell.empty{background:#fafafa}
     .daynum{font-weight:700;font-size:.95rem;color:var(--muted)}
     .amounts{margin-top:auto;display:flex;flex-direction:column;gap:4px;font-variant-numeric:tabular-nums}
+    .meta{color:#111827;font-weight:700;font-size:1.05rem}
     .sold{font-weight:800;color:var(--link)}
     .amt{font-weight:800;color:var(--success)}
     .subtle{color:var(--muted);font-size:.9rem}
@@ -80,6 +81,7 @@
   const grid=document.getElementById('calendarGrid');
   const monthLabel=document.getElementById('monthLabel');
   const currencyFmt=new Intl.NumberFormat(undefined,{style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:2});
+  const integerFmt=new Intl.NumberFormat(undefined,{maximumFractionDigits:0});
   const WEEKDAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
   function renderWeekdayHeader(){
@@ -103,7 +105,9 @@
       const k=(typeof it.day==='string'?it.day:new Date(it.day).toISOString()).slice(0,10);
       map[k]={
         cashTotal:Number(it.cashTotal||0),
-        soldTotal:Number(it.soldTotal||0)
+        soldTotal:Number(it.soldTotal||0),
+        clientCount:Number(it.clientCount||0),
+        serviceCount:Number(it.serviceCount||0)
       };
     }
     return map;
@@ -125,12 +129,14 @@
     for(let d=1; d<=dim; d++){
       const yyyy=y, mm=String(m1).padStart(2,'0'), dd=String(d).padStart(2,'0');
       const key=`${yyyy}-${mm}-${dd}`;
-      const dayTotals=totals[key]||{cashTotal:0,soldTotal:0};
+      const dayTotals=totals[key]||{cashTotal:0,soldTotal:0,clientCount:0,serviceCount:0};
       const cashLabel=dayTotals.cashTotal?currencyFmt.format(dayTotals.cashTotal):'';
       const soldLabel=dayTotals.soldTotal?currencyFmt.format(dayTotals.soldTotal):'';
+      const hasMeta = (dayTotals.clientCount || dayTotals.serviceCount);
+      const metaLabel = hasMeta ? `Clients: ${integerFmt.format(dayTotals.clientCount||0)}, Services: ${integerFmt.format(dayTotals.serviceCount||0)}` : '';
 
       const c=document.createElement('div'); c.className='cell';
-      c.innerHTML=`<div class="daynum">${d}</div><div class="amounts"><div class="sold">${soldLabel}</div><div class="amt">${cashLabel}</div></div>`;
+      c.innerHTML=`<div class="daynum">${d}</div><div class="amounts">${metaLabel?`<div class="meta">${metaLabel}</div>`:''}<div class="sold">${soldLabel}</div><div class="amt">${cashLabel}</div></div>`;
       grid.appendChild(c);
     }
 

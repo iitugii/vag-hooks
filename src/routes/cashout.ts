@@ -12,7 +12,13 @@ router.get("/", (_req: Request, res: Response) => {
   res.sendFile(path.resolve(__dirname, "../../public/cashout.html"));
 });
 
-type Row = { day_local: string; cash_total: number; sold_total: number };
+type Row = {
+  day_local: string;
+  cash_total: number;
+  sold_total: number;
+  client_count: number;
+  service_count: number;
+};
 
 // GET /cashout/data -> monthly cash summary for the calendar widget.
 router.get("/data", async (req: Request, res: Response) => {
@@ -137,7 +143,20 @@ router.get("/data", async (req: Request, res: Response) => {
               )
             ) FROM jsonb_array_elements(payload->'payload'->'payments') p),
             0
-          )::double precision AS nested_payments_array_total
+          )::double precision AS nested_payments_array_total,
+
+          COALESCE(
+            NULLIF((payload->>'transactionId')::text, ''),
+            NULLIF((payload->'payload'->>'transactionId')::text, ''),
+            NULLIF((payload->>'userPaymentsMstId')::text, ''),
+            NULLIF((payload->'payload'->>'userPaymentsMstId')::text, '')
+          ) AS transaction_id,
+
+          COALESCE(
+            (payload->>'quantity')::numeric,
+            (payload->'payload'->>'quantity')::numeric,
+            1
+          )::double precision AS service_qty
         FROM month_scope
       ),
       normalized AS (
@@ -146,6 +165,8 @@ router.get("/data", async (req: Request, res: Response) => {
           cash_tender,
           card_tender,
           change_due,
+          transaction_id,
+          service_qty,
           /* total tendered (cash + card) */
           COALESCE(
             (payload->>'totalAmount')::numeric,
@@ -174,7 +195,10 @@ router.get("/data", async (req: Request, res: Response) => {
         SUM(GREATEST(cash_tender - change_due, 0))::double precision AS cash_total,
 
         /* blue: total sold (all tendered minus change) */
-        SUM(GREATEST(tender_total - change_due, 0))::double precision AS sold_total
+        SUM(GREATEST(tender_total - change_due, 0))::double precision AS sold_total,
+
+        COUNT(DISTINCT transaction_id) AS client_count,
+        SUM(service_qty)::double precision AS service_count
       FROM normalized
       GROUP BY ts_local::date
       ORDER BY ts_local::date;
@@ -183,7 +207,9 @@ router.get("/data", async (req: Request, res: Response) => {
     const data = rows.map((r: Row) => ({
       day: r.day_local,
       cashTotal: Number(r.cash_total || 0),
-      soldTotal: Number(r.sold_total || 0)
+      soldTotal: Number(r.sold_total || 0),
+      clientCount: Number(r.client_count || 0),
+      serviceCount: Number(r.service_count || 0)
     }));
 
     res.json({ year, month, data });
