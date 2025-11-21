@@ -161,6 +161,24 @@ router.get("/data", async (req, res) => {
             NULLIF((payload->'payload'->>'tenderAmount')::numeric, 0),
             NULLIF((payload->>'amountTendered')::numeric, 0),
             NULLIF((payload->'payload'->>'amountTendered')::numeric, 0),
+          /* total tendered (cash + card) */
+          COALESCE(
+            (payload->>'totalAmount')::numeric,
+            (payload->'payload'->>'totalAmount')::numeric,
+            (payload->>'amountTotal')::numeric,
+            (payload->'payload'->>'amountTotal')::numeric,
+            (payload->>'amount')::numeric,
+            (payload->'payload'->>'amount')::numeric,
+            (payload->>'total')::numeric,
+            (payload->'payload'->>'total')::numeric,
+            (payload->>'tenderAmount')::numeric,
+            (payload->'payload'->>'tenderAmount')::numeric,
+            (payload->>'amountTendered')::numeric,
+            (payload->'payload'->>'amountTendered')::numeric,
+            NULLIF(tender_array_total, 0),
+            NULLIF(nested_tender_array_total, 0),
+            NULLIF(payments_array_total, 0),
+            NULLIF(nested_payments_array_total, 0),
             cash_tender + card_tender
           )::double precision AS tender_total
         FROM base_amounts
