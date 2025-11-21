@@ -64,6 +64,8 @@ router.get("/data", async (req: Request, res: Response) => {
             (payload->'payload'->>'creditAmount')::numeric,
             (payload->>'cardAmount')::numeric,
             (payload->'payload'->>'cardAmount')::numeric,
+            (payload->>'ccAmount')::numeric,
+            (payload->'payload'->>'ccAmount')::numeric,
             (payload->>'amountCredit')::numeric,
             (payload->'payload'->>'amountCredit')::numeric,
             (payload->>'amountCard')::numeric,
