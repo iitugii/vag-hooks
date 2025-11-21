@@ -9,7 +9,7 @@ router.get("/", (_req, res) => {
   res.sendFile(path.join(__dirname, "../../public/cashout.html"));
 });
 
-type Row = { day_local: string; total: number };
+type Row = { day_local: string; cash_total: number; sold_total: number };
 
 router.get("/data", async (req, res) => {
   try {
@@ -18,7 +18,7 @@ router.get("/data", async (req, res) => {
     const month = parseInt((req.query.month as string) || `${now.getMonth() + 1}`, 10);
     const monthStr = String(month).padStart(2, "0");
 
-    // Aggregate (amountCash - amountDue) per local day
+    // Aggregate per local day
     const rows = await prisma.$queryRaw<Row[]>`
       WITH base AS (
         SELECT
@@ -32,32 +32,64 @@ router.get("/data", async (req, res) => {
         SELECT *
         FROM base
         WHERE date_trunc('month', ts_local)::date = (${year} || '-' || ${monthStr} || '-01')::date
-      )
-      SELECT
-        to_char(ts_local::date, 'YYYY-MM-DD') AS day_local,
-        SUM(
+      ),
+      normalized AS (
+        SELECT
+          ts_local,
+          /* cash tendered */
           COALESCE(
             (payload->>'amountCash')::numeric,
             (payload->'payload'->>'amountCash')::numeric,
             (payload->>'cashAmount')::numeric,
             (payload->'payload'->>'cashAmount')::numeric,
+            (payload->>'cash')::numeric,
+            (payload->'payload'->>'cash')::numeric,
+            (payload->>'cash_in')::numeric,
+            (payload->'payload'->>'cash_in')::numeric,
+            (payload->>'tenderAmount')::numeric,
+            (payload->'payload'->>'tenderAmount')::numeric,
             0
-          )
-          -
+          )::double precision AS cash_tender,
+
+          /* credit-card tendered */
+          COALESCE(
+            (payload->>'creditCardAmount')::numeric,
+            (payload->'payload'->>'creditCardAmount')::numeric,
+            (payload->>'creditAmount')::numeric,
+            (payload->'payload'->>'creditAmount')::numeric,
+            (payload->>'cardAmount')::numeric,
+            (payload->'payload'->>'cardAmount')::numeric,
+            (payload->>'amountCredit')::numeric,
+            (payload->'payload'->>'amountCredit')::numeric,
+            (payload->>'amountCard')::numeric,
+            (payload->'payload'->>'amountCard')::numeric,
+            0
+          )::double precision AS card_tender,
+
+          /* change due back to customer */
           COALESCE(
             (payload->>'amountDue')::numeric,
             (payload->'payload'->>'amountDue')::numeric,
             0
-          )
-        )::double precision AS total
-      FROM month_scope
+          )::double precision AS change_due
+        FROM month_scope
+      )
+      SELECT
+        to_char(ts_local::date, 'YYYY-MM-DD') AS day_local,
+        /* green: cash collected (cash tendered minus change due) */
+        SUM(GREATEST(cash_tender - change_due, 0))::double precision AS cash_total,
+
+        /* blue: total sold (all tendered minus change) */
+        SUM(GREATEST(cash_tender + card_tender - change_due, 0))::double precision AS sold_total
+      FROM normalized
       GROUP BY ts_local::date
       ORDER BY ts_local::date;
     `;
 
     const data = rows.map(r => ({
       day: r.day_local,
-      total: Number(r.total || 0)
+      cashTotal: Number(r.cash_total || 0),
+      soldTotal: Number(r.sold_total || 0)
     }));
 
     res.json({ year, month, data });
