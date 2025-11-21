@@ -33,8 +33,9 @@ router.get("/data", async (req, res) => {
         FROM base
         WHERE date_trunc('month', ts_local)::date = (${year} || '-' || ${monthStr} || '-01')::date
       ),
-      normalized AS (
+      base_amounts AS (
         SELECT
+          payload,
           ts_local,
           /* cash tendered */
           COALESCE(
@@ -70,9 +71,96 @@ router.get("/data", async (req, res) => {
           COALESCE(
             (payload->>'amountDue')::numeric,
             (payload->'payload'->>'amountDue')::numeric,
+            (payload->>'changeDue')::numeric,
+            (payload->'payload'->>'changeDue')::numeric,
+            (payload->>'change')::numeric,
+            (payload->'payload'->>'change')::numeric,
             0
-          )::double precision AS change_due
+          )::double precision AS change_due,
+
+          /* sum over tender arrays if present */
+          COALESCE(
+            (SELECT SUM(
+              COALESCE(
+                (t->>'amount')::numeric,
+                (t->>'amountPaid')::numeric,
+                (t->>'tenderAmount')::numeric,
+                (t->>'total')::numeric,
+                0
+              )
+            ) FROM jsonb_array_elements(payload->'tenders') t),
+            0
+          )::double precision AS tender_array_total,
+
+          /* same for nested payload.tenders */
+          COALESCE(
+            (SELECT SUM(
+              COALESCE(
+                (t->>'amount')::numeric,
+                (t->>'amountPaid')::numeric,
+                (t->>'tenderAmount')::numeric,
+                (t->>'total')::numeric,
+                0
+              )
+            ) FROM jsonb_array_elements(payload->'payload'->'tenders') t),
+            0
+          )::double precision AS nested_tender_array_total,
+
+          /* payments array variants */
+          COALESCE(
+            (SELECT SUM(
+              COALESCE(
+                (p->>'amount')::numeric,
+                (p->>'amountPaid')::numeric,
+                (p->>'tenderAmount')::numeric,
+                (p->>'total')::numeric,
+                0
+              )
+            ) FROM jsonb_array_elements(payload->'payments') p),
+            0
+          )::double precision AS payments_array_total,
+
+          COALESCE(
+            (SELECT SUM(
+              COALESCE(
+                (p->>'amount')::numeric,
+                (p->>'amountPaid')::numeric,
+                (p->>'tenderAmount')::numeric,
+                (p->>'total')::numeric,
+                0
+              )
+            ) FROM jsonb_array_elements(payload->'payload'->'payments') p),
+            0
+          )::double precision AS nested_payments_array_total
         FROM month_scope
+      ),
+      normalized AS (
+        SELECT
+          ts_local,
+          cash_tender,
+          card_tender,
+          change_due,
+          /* total tendered (cash + card) */
+          COALESCE(
+            (payload->>'totalAmount')::numeric,
+            (payload->'payload'->>'totalAmount')::numeric,
+            (payload->>'amountTotal')::numeric,
+            (payload->'payload'->>'amountTotal')::numeric,
+            (payload->>'amount')::numeric,
+            (payload->'payload'->>'amount')::numeric,
+            (payload->>'total')::numeric,
+            (payload->'payload'->>'total')::numeric,
+            (payload->>'tenderAmount')::numeric,
+            (payload->'payload'->>'tenderAmount')::numeric,
+            (payload->>'amountTendered')::numeric,
+            (payload->'payload'->>'amountTendered')::numeric,
+            NULLIF(tender_array_total, 0),
+            NULLIF(nested_tender_array_total, 0),
+            NULLIF(payments_array_total, 0),
+            NULLIF(nested_payments_array_total, 0),
+            cash_tender + card_tender
+          )::double precision AS tender_total
+        FROM base_amounts
       )
       SELECT
         to_char(ts_local::date, 'YYYY-MM-DD') AS day_local,
@@ -80,7 +168,7 @@ router.get("/data", async (req, res) => {
         SUM(GREATEST(cash_tender - change_due, 0))::double precision AS cash_total,
 
         /* blue: total sold (all tendered minus change) */
-        SUM(GREATEST(cash_tender + card_tender - change_due, 0))::double precision AS sold_total
+        SUM(GREATEST(tender_total - change_due, 0))::double precision AS sold_total
       FROM normalized
       GROUP BY ts_local::date
       ORDER BY ts_local::date;
