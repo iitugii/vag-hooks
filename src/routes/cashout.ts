@@ -33,9 +33,8 @@ router.get("/data", async (req, res) => {
         FROM base
         WHERE date_trunc('month', ts_local)::date = (${year} || '-' || ${monthStr} || '-01')::date
       ),
-      base_amounts AS (
+      normalized AS (
         SELECT
-          payload,
           ts_local,
           /* cash tendered */
           COALESCE(
@@ -74,30 +73,6 @@ router.get("/data", async (req, res) => {
             0
           )::double precision AS change_due
         FROM month_scope
-      ),
-      normalized AS (
-        SELECT
-          ts_local,
-          cash_tender,
-          card_tender,
-          change_due,
-          /* total tendered (cash + card) */
-          COALESCE(
-            (payload->>'totalAmount')::numeric,
-            (payload->'payload'->>'totalAmount')::numeric,
-            (payload->>'amountTotal')::numeric,
-            (payload->'payload'->>'amountTotal')::numeric,
-            (payload->>'amount')::numeric,
-            (payload->'payload'->>'amount')::numeric,
-            (payload->>'total')::numeric,
-            (payload->'payload'->>'total')::numeric,
-            (payload->>'tenderAmount')::numeric,
-            (payload->'payload'->>'tenderAmount')::numeric,
-            (payload->>'amountTendered')::numeric,
-            (payload->'payload'->>'amountTendered')::numeric,
-            cash_tender + card_tender
-          )::double precision AS tender_total
-        FROM base_amounts
       )
       SELECT
         to_char(ts_local::date, 'YYYY-MM-DD') AS day_local,
@@ -105,7 +80,7 @@ router.get("/data", async (req, res) => {
         SUM(GREATEST(cash_tender - change_due, 0))::double precision AS cash_total,
 
         /* blue: total sold (all tendered minus change) */
-        SUM(GREATEST(tender_total - change_due, 0))::double precision AS sold_total
+        SUM(GREATEST(cash_tender + card_tender - change_due, 0))::double precision AS sold_total
       FROM normalized
       GROUP BY ts_local::date
       ORDER BY ts_local::date;
