@@ -12,8 +12,7 @@ router.get("/", (_req: Request, res: Response) => {
   res.sendFile(path.resolve(__dirname, "../../public/cashout.html"));
 });
 
-// Shape returned by the aggregation query.
-type Row = { day_local: string; total: number };
+type Row = { day_local: string; cash_total: number; sold_total: number };
 
 // GET /cashout/data -> monthly cash summary for the calendar widget.
 router.get("/data", async (req: Request, res: Response) => {
@@ -23,7 +22,7 @@ router.get("/data", async (req: Request, res: Response) => {
     const month = parseInt((req.query.month as string) || `${now.getMonth() + 1}`, 10);
     const monthStr = String(month).padStart(2, "0");
 
-    // Pull rows grouped by local trading day (America/New_York) based on cashAmount minus amountDue.
+    // Aggregate per local day
     const rows = await prisma.$queryRaw<Row[]>`
       WITH base AS (
         SELECT
@@ -37,10 +36,12 @@ router.get("/data", async (req: Request, res: Response) => {
         SELECT *
         FROM base
         WHERE date_trunc('month', ts_local)::date = (${year} || '-' || ${monthStr} || '-01')::date
-      )
-      SELECT
-        to_char(ts_local::date, 'YYYY-MM-DD') AS day_local,
-        SUM(
+      ),
+      base_amounts AS (
+        SELECT
+          payload,
+          ts_local,
+          /* cash tendered */
           COALESCE(
             (payload->>'amountCash')::numeric,
             (payload->'payload'->>'amountCash')::numeric,
@@ -53,22 +54,134 @@ router.get("/data", async (req: Request, res: Response) => {
             (payload->>'tenderAmount')::numeric,
             (payload->'payload'->>'tenderAmount')::numeric,
             0
-          )
-          -
+          )::double precision AS cash_tender,
+
+          /* credit-card tendered */
+          COALESCE(
+            (payload->>'creditCardAmount')::numeric,
+            (payload->'payload'->>'creditCardAmount')::numeric,
+            (payload->>'creditAmount')::numeric,
+            (payload->'payload'->>'creditAmount')::numeric,
+            (payload->>'cardAmount')::numeric,
+            (payload->'payload'->>'cardAmount')::numeric,
+            (payload->>'amountCredit')::numeric,
+            (payload->'payload'->>'amountCredit')::numeric,
+            (payload->>'amountCard')::numeric,
+            (payload->'payload'->>'amountCard')::numeric,
+            0
+          )::double precision AS card_tender,
+
+          /* change due back to customer */
           COALESCE(
             (payload->>'amountDue')::numeric,
             (payload->'payload'->>'amountDue')::numeric,
+            (payload->>'changeDue')::numeric,
+            (payload->'payload'->>'changeDue')::numeric,
+            (payload->>'change')::numeric,
+            (payload->'payload'->>'change')::numeric,
             0
-          )
-        )::double precision AS total
-      FROM month_scope
+          )::double precision AS change_due,
+
+          /* sum over tender arrays if present */
+          COALESCE(
+            (SELECT SUM(
+              COALESCE(
+                (t->>'amount')::numeric,
+                (t->>'amountPaid')::numeric,
+                (t->>'tenderAmount')::numeric,
+                (t->>'total')::numeric,
+                0
+              )
+            ) FROM jsonb_array_elements(payload->'tenders') t),
+            0
+          )::double precision AS tender_array_total,
+
+          /* same for nested payload.tenders */
+          COALESCE(
+            (SELECT SUM(
+              COALESCE(
+                (t->>'amount')::numeric,
+                (t->>'amountPaid')::numeric,
+                (t->>'tenderAmount')::numeric,
+                (t->>'total')::numeric,
+                0
+              )
+            ) FROM jsonb_array_elements(payload->'payload'->'tenders') t),
+            0
+          )::double precision AS nested_tender_array_total,
+
+          /* payments array variants */
+          COALESCE(
+            (SELECT SUM(
+              COALESCE(
+                (p->>'amount')::numeric,
+                (p->>'amountPaid')::numeric,
+                (p->>'tenderAmount')::numeric,
+                (p->>'total')::numeric,
+                0
+              )
+            ) FROM jsonb_array_elements(payload->'payments') p),
+            0
+          )::double precision AS payments_array_total,
+
+          COALESCE(
+            (SELECT SUM(
+              COALESCE(
+                (p->>'amount')::numeric,
+                (p->>'amountPaid')::numeric,
+                (p->>'tenderAmount')::numeric,
+                (p->>'total')::numeric,
+                0
+              )
+            ) FROM jsonb_array_elements(payload->'payload'->'payments') p),
+            0
+          )::double precision AS nested_payments_array_total
+        FROM month_scope
+      ),
+      normalized AS (
+        SELECT
+          ts_local,
+          cash_tender,
+          card_tender,
+          change_due,
+          /* total tendered (cash + card) */
+          COALESCE(
+            (payload->>'totalAmount')::numeric,
+            (payload->'payload'->>'totalAmount')::numeric,
+            (payload->>'amountTotal')::numeric,
+            (payload->'payload'->>'amountTotal')::numeric,
+            (payload->>'amount')::numeric,
+            (payload->'payload'->>'amount')::numeric,
+            (payload->>'total')::numeric,
+            (payload->'payload'->>'total')::numeric,
+            (payload->>'tenderAmount')::numeric,
+            (payload->'payload'->>'tenderAmount')::numeric,
+            (payload->>'amountTendered')::numeric,
+            (payload->'payload'->>'amountTendered')::numeric,
+            NULLIF(tender_array_total, 0),
+            NULLIF(nested_tender_array_total, 0),
+            NULLIF(payments_array_total, 0),
+            NULLIF(nested_payments_array_total, 0),
+            cash_tender + card_tender
+          )::double precision AS tender_total
+        FROM base_amounts
+      )
+      SELECT
+        to_char(ts_local::date, 'YYYY-MM-DD') AS day_local,
+        /* green: cash collected (cash tendered minus change due) */
+        SUM(GREATEST(cash_tender - change_due, 0))::double precision AS cash_total,
+
+        /* blue: total sold (all tendered minus change) */
+        SUM(GREATEST(tender_total - change_due, 0))::double precision AS sold_total
+      FROM normalized
       GROUP BY ts_local::date
       ORDER BY ts_local::date;
     `;
 
     const data = rows.map((r: Row) => ({
       day: r.day_local,
-      total: Number(r.total || 0),
+      cashTotal: Number(r.cash_total || 0),
+      soldTotal: Number(r.sold_total || 0)
     }));
 
     res.json({ year, month, data });

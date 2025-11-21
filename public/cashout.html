@@ -1,155 +1,149 @@
-diff --git a/public/cashout.html b/public/cashout.html
-index 8a56c11c1263f74a00282e428c26b7d5a0d26d12..b6bb610325dcb78f4514ebccccc85e9c09656e18 100644
---- a/public/cashout.html
-+++ b/public/cashout.html
-@@ -5,138 +5,145 @@
-   <meta charset="UTF-8" />
-   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-   <title>Cashout Calendar</title>
-   <style>
-     :root { --bg:#f7f7fb; --fg:#1f2328; --muted:#6b7280; --line:#e5e7eb; --success:#059669; --card:#fff; --bar:#0f172a; --btn:#374151; --btnh:#4b5563; --link:#2563eb; --linkh:#1d4ed8; }
-     *{box-sizing:border-box}
-     body{margin:0;background:var(--bg);color:var(--fg);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
-     header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px;background:var(--bar);color:#fff}
-     .title{margin:0;font-size:1.25rem;font-weight:700}
-     .actions{display:flex;gap:8px;align-items:center}
-     .token{border:1px solid #334155;background:#0b1220;color:#fff;padding:8px 10px;border-radius:8px;min-width:220px}
-     .btn{border:0;background:var(--btn);color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer}
-     .btn:hover{background:var(--btnh)}
-     .link{color:#fff;background:var(--link);padding:8px 12px;border-radius:8px;text-decoration:none}
-     .link:hover{background:var(--linkh)}
-     .wrap{max-width:1100px;margin:16px auto;padding:0 16px 32px}
-     .nav{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:12px 0 8px}
-     .month-label{font-size:1.25rem;font-weight:700}
-     .grid{display:grid;grid-template-columns:repeat(7,1fr);border:1px solid var(--line);background:var(--line);border-radius:10px;overflow:hidden}
-     .weekday{background:#f3f4f6;color:#111827;padding:10px;font-weight:600;text-align:center;border-right:1px solid var(--line)}
-     .weekday:last-child{border-right:0}
-     .cell{background:var(--card);min-height:110px;padding:8px;display:flex;flex-direction:column;border-right:1px solid var(--line);border-top:1px solid var(--line)}
-     .cell:nth-child(7n){border-right:0}
-     .cell.empty{background:#fafafa}
-     .daynum{font-weight:700;font-size:.95rem;color:var(--muted)}
--    .amt{margin-top:auto;font-weight:800;color:var(--success);font-variant-numeric:tabular-nums}
-+    .amounts{margin-top:auto;display:flex;flex-direction:column;gap:4px;font-variant-numeric:tabular-nums}
-+    .sold{font-weight:800;color:var(--link)}
-+    .amt{font-weight:800;color:var(--success)}
-     .subtle{color:var(--muted);font-size:.9rem}
-   </style>
- </head>
- <body>
- <header>
-   <h1 class="title">Cashout Calendar</h1>
-   <div class="actions">
-     <input id="tokenInput" class="token" type="text" placeholder="Dashboard token (DASH_TOKEN)"/>
-     <button id="applyToken" class="btn">Apply Token</button>
-     <a id="backToDash" class="link" href="/dashboard">← Back to Dashboard</a>
-   </div>
- </header>
- 
- <div class="wrap">
-   <div class="nav">
-     <div>
-       <button id="prev" class="btn">← Previous</button>
-       <button id="today" class="btn">Today</button>
-       <button id="next" class="btn">Next →</button>
-     </div>
-     <div class="month-label" id="monthLabel">Loading…</div>
-   </div>
- 
-   <div class="grid" id="weekdayRow"></div>
-   <div class="grid" id="calendarGrid"></div>
- 
--  <p class="subtle">Totals reflect <strong>cashAmount − amountDue</strong> summed per day.</p>
-+  <p class="subtle">Blue shows <strong>total sold</strong> (cash + card minus change due); green shows <strong>cash collected</strong> (<code>cashAmount − amountDue</code>) per day.</p>
- </div>
- 
- <script>
-   // ---- token helpers
-   function qp(name){return new URL(location.href).searchParams.get(name)}
-   function getToken(){return qp('auth')||localStorage.getItem('DASH_TOKEN')||''}
-   function setToken(t){if(t)localStorage.setItem('DASH_TOKEN',t)}
-   const tokenInput=document.getElementById('tokenInput');
-   const backToDash=document.getElementById('backToDash');
-   (function initToken(){
-     const t=getToken(); tokenInput.value=t;
-     backToDash.href=t?`/dashboard?auth=${encodeURIComponent(t)}`:'/dashboard';
-   })();
-   document.getElementById('applyToken').onclick=()=>{
-     const t=tokenInput.value.trim(); setToken(t);
-     const u=new URL(location.href); if(t)u.searchParams.set('auth',t);else u.searchParams.delete('auth');
-     location.href=u.toString();
-   };
- 
-   const weekdayRow=document.getElementById('weekdayRow');
-   const grid=document.getElementById('calendarGrid');
-   const monthLabel=document.getElementById('monthLabel');
-   const WEEKDAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
- 
-   function renderWeekdayHeader(){
-     weekdayRow.innerHTML='';
-     WEEKDAYS.forEach(w=>{
-       const el=document.createElement('div'); el.className='weekday'; el.textContent=w; weekdayRow.appendChild(el);
-     });
-   }
- 
-   function firstOfMonth(y,m1){return new Date(y,m1-1,1)}
-   function daysInMonth(y,m1){return new Date(y,m1,0).getDate()}
-   function fmtMonth(y,m1){return new Date(y,m1-1,1).toLocaleString(undefined,{month:'long',year:'numeric'})}
- 
-   async function fetchMonthData(year,month){
-     const headers={}; const t=getToken(); if(t) headers['x-auth-token']=t;
-     const r=await fetch(`/cashout/data?year=${year}&month=${month}`,{headers});
-     if(!r.ok) throw new Error(`HTTP ${r.status}`);
-     const {data}=await r.json();
-     const map=Object.create(null);
-     for(const it of data){
-       const k=(typeof it.day==='string'?it.day:new Date(it.day).toISOString()).slice(0,10);
--      map[k]=Number(it.total||0);
-+      map[k]={
-+        cashTotal:Number(it.cashTotal||0),
-+        soldTotal:Number(it.soldTotal||0)
-+      };
-     }
-     return map;
-   }
- 
-   async function renderCalendar(y,m1){
-     monthLabel.textContent=fmtMonth(y,m1);
-     grid.innerHTML='';
-     const first=firstOfMonth(y,m1), startDow=first.getDay(), dim=daysInMonth(y,m1);
- 
-     // always draw the frame; fetch totals but don't crash UI if it fails
-     let totals={};
-     try { totals=await fetchMonthData(y,m1) } catch(e){ console.warn('cashout/data failed', e) }
- 
-     // leading blanks
-     for(let i=0;i<startDow;i++){ const c=document.createElement('div'); c.className='cell empty'; grid.appendChild(c) }
- 
-     // day cells
-     for(let d=1; d<=dim; d++){
-       const yyyy=y, mm=String(m1).padStart(2,'0'), dd=String(d).padStart(2,'0');
-       const key=`${yyyy}-${mm}-${dd}`;
--      const amt=totals[key]||0;
-+      const dayTotals=totals[key]||{cashTotal:0,soldTotal:0};
-+      const cashLabel=dayTotals.cashTotal?`$${dayTotals.cashTotal.toFixed(2)}`:'';
-+      const soldLabel=dayTotals.soldTotal?`$${dayTotals.soldTotal.toFixed(2)}`:'';
- 
-       const c=document.createElement('div'); c.className='cell';
--      c.innerHTML=`<div class="daynum">${d}</div><div class="amt">${amt?('$'+amt.toFixed(2)) : ''}</div>`;
-+      c.innerHTML=`<div class="daynum">${d}</div><div class="amounts"><div class="sold">${soldLabel}</div><div class="amt">${cashLabel}</div></div>`;
-       grid.appendChild(c);
-     }
- 
-     // trailing blanks
-     const cellsSoFar=startDow+dim, pad=(7-(cellsSoFar%7))%7;
-     for(let i=0;i<pad;i++){ const c=document.createElement('div'); c.className='cell empty'; grid.appendChild(c) }
-   }
- 
-   let Y=(new Date()).getFullYear(), M=(new Date()).getMonth()+1;
-   document.getElementById('prev').onclick=()=>{ M--; if(M<1){M=12; Y--} renderCalendar(Y,M) }
-   document.getElementById('next').onclick=()=>{ M++; if(M>12){M=1; Y++} renderCalendar(Y,M) }
-   document.getElementById('today').onclick=()=>{ const n=new Date(); Y=n.getFullYear(); M=n.getMonth()+1; renderCalendar(Y,M) }
- 
-   (function init(){ renderWeekdayHeader(); renderCalendar(Y,M) })();
- </script>
- </body>
- </html>
+<!-- public/cashout.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Cashout Calendar</title>
+  <style>
+    :root { --bg:#f7f7fb; --fg:#1f2328; --muted:#6b7280; --line:#e5e7eb; --success:#059669; --card:#fff; --bar:#0f172a; --btn:#374151; --btnh:#4b5563; --link:#2563eb; --linkh:#1d4ed8; }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--fg);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+    header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px;background:var(--bar);color:#fff}
+    .title{margin:0;font-size:1.25rem;font-weight:700}
+    .actions{display:flex;gap:8px;align-items:center}
+    .token{border:1px solid #334155;background:#0b1220;color:#fff;padding:8px 10px;border-radius:8px;min-width:220px}
+    .btn{border:0;background:var(--btn);color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer}
+    .btn:hover{background:var(--btnh)}
+    .link{color:#fff;background:var(--link);padding:8px 12px;border-radius:8px;text-decoration:none}
+    .link:hover{background:var(--linkh)}
+    .wrap{max-width:1100px;margin:16px auto;padding:0 16px 32px}
+    .nav{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:12px 0 8px}
+    .month-label{font-size:1.25rem;font-weight:700}
+    .grid{display:grid;grid-template-columns:repeat(7,1fr);border:1px solid var(--line);background:var(--line);border-radius:10px;overflow:hidden}
+    .weekday{background:#f3f4f6;color:#111827;padding:10px;font-weight:600;text-align:center;border-right:1px solid var(--line)}
+    .weekday:last-child{border-right:0}
+    .cell{background:var(--card);min-height:110px;padding:8px;display:flex;flex-direction:column;border-right:1px solid var(--line);border-top:1px solid var(--line)}
+    .cell:nth-child(7n){border-right:0}
+    .cell.empty{background:#fafafa}
+    .daynum{font-weight:700;font-size:.95rem;color:var(--muted)}
+    .amounts{margin-top:auto;display:flex;flex-direction:column;gap:4px;font-variant-numeric:tabular-nums}
+    .sold{font-weight:800;color:var(--link)}
+    .amt{font-weight:800;color:var(--success)}
+    .subtle{color:var(--muted);font-size:.9rem}
+  </style>
+</head>
+<body>
+<header>
+  <h1 class="title">Cashout Calendar</h1>
+  <div class="actions">
+    <input id="tokenInput" class="token" type="text" placeholder="Dashboard token (DASH_TOKEN)"/>
+    <button id="applyToken" class="btn">Apply Token</button>
+    <a id="backToDash" class="link" href="/dashboard">← Back to Dashboard</a>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="nav">
+    <div>
+      <button id="prev" class="btn">← Previous</button>
+      <button id="today" class="btn">Today</button>
+      <button id="next" class="btn">Next →</button>
+    </div>
+    <div class="month-label" id="monthLabel">Loading…</div>
+  </div>
+
+  <div class="grid" id="weekdayRow"></div>
+  <div class="grid" id="calendarGrid"></div>
+
+  <p class="subtle">Blue shows <strong>total sold</strong> (cash + card minus change due); green shows <strong>cash collected</strong> (<code>cashAmount − amountDue</code>) per day.</p>
+</div>
+
+<script>
+  // ---- token helpers
+  function qp(name){return new URL(location.href).searchParams.get(name)}
+  function getToken(){return qp('auth')||localStorage.getItem('DASH_TOKEN')||''}
+  function setToken(t){if(t)localStorage.setItem('DASH_TOKEN',t)}
+  const tokenInput=document.getElementById('tokenInput');
+  const backToDash=document.getElementById('backToDash');
+  (function initToken(){
+    const t=getToken(); tokenInput.value=t;
+    backToDash.href=t?`/dashboard?auth=${encodeURIComponent(t)}`:'/dashboard';
+  })();
+  document.getElementById('applyToken').onclick=()=>{
+    const t=tokenInput.value.trim(); setToken(t);
+    const u=new URL(location.href); if(t)u.searchParams.set('auth',t);else u.searchParams.delete('auth');
+    location.href=u.toString();
+  };
+
+  const weekdayRow=document.getElementById('weekdayRow');
+  const grid=document.getElementById('calendarGrid');
+  const monthLabel=document.getElementById('monthLabel');
+  const WEEKDAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  function renderWeekdayHeader(){
+    weekdayRow.innerHTML='';
+    WEEKDAYS.forEach(w=>{
+      const el=document.createElement('div'); el.className='weekday'; el.textContent=w; weekdayRow.appendChild(el);
+    });
+  }
+
+  function firstOfMonth(y,m1){return new Date(y,m1-1,1)}
+  function daysInMonth(y,m1){return new Date(y,m1,0).getDate()}
+  function fmtMonth(y,m1){return new Date(y,m1-1,1).toLocaleString(undefined,{month:'long',year:'numeric'})}
+
+  async function fetchMonthData(year,month){
+    const headers={}; const t=getToken(); if(t) headers['x-auth-token']=t;
+    const r=await fetch(`/cashout/data?year=${year}&month=${month}`,{headers});
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    const {data}=await r.json();
+    const map=Object.create(null);
+    for(const it of data){
+      const k=(typeof it.day==='string'?it.day:new Date(it.day).toISOString()).slice(0,10);
+      map[k]={
+        cashTotal:Number(it.cashTotal||0),
+        soldTotal:Number(it.soldTotal||0)
+      };
+    }
+    return map;
+  }
+
+  async function renderCalendar(y,m1){
+    monthLabel.textContent=fmtMonth(y,m1);
+    grid.innerHTML='';
+    const first=firstOfMonth(y,m1), startDow=first.getDay(), dim=daysInMonth(y,m1);
+
+    // always draw the frame; fetch totals but don't crash UI if it fails
+    let totals={};
+    try { totals=await fetchMonthData(y,m1) } catch(e){ console.warn('cashout/data failed', e) }
+
+    // leading blanks
+    for(let i=0;i<startDow;i++){ const c=document.createElement('div'); c.className='cell empty'; grid.appendChild(c) }
+
+    // day cells
+    for(let d=1; d<=dim; d++){
+      const yyyy=y, mm=String(m1).padStart(2,'0'), dd=String(d).padStart(2,'0');
+      const key=`${yyyy}-${mm}-${dd}`;
+      const dayTotals=totals[key]||{cashTotal:0,soldTotal:0};
+      const cashLabel=dayTotals.cashTotal?`$${dayTotals.cashTotal.toFixed(2)}`:'';
+      const soldLabel=dayTotals.soldTotal?`$${dayTotals.soldTotal.toFixed(2)}`:'';
+
+      const c=document.createElement('div'); c.className='cell';
+      c.innerHTML=`<div class="daynum">${d}</div><div class="amounts"><div class="sold">${soldLabel}</div><div class="amt">${cashLabel}</div></div>`;
+      grid.appendChild(c);
+    }
+
+    // trailing blanks
+    const cellsSoFar=startDow+dim, pad=(7-(cellsSoFar%7))%7;
+    for(let i=0;i<pad;i++){ const c=document.createElement('div'); c.className='cell empty'; grid.appendChild(c) }
+  }
+
+  let Y=(new Date()).getFullYear(), M=(new Date()).getMonth()+1;
+  document.getElementById('prev').onclick=()=>{ M--; if(M<1){M=12; Y--} renderCalendar(Y,M) }
+  document.getElementById('next').onclick=()=>{ M++; if(M>12){M=1; Y++} renderCalendar(Y,M) }
+  document.getElementById('today').onclick=()=>{ const n=new Date(); Y=n.getFullYear(); M=n.getMonth()+1; renderCalendar(Y,M) }
+
+  (function init(){ renderWeekdayHeader(); renderCalendar(Y,M) })();
+</script>
+</body>
+</html>
