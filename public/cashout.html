@@ -79,6 +79,7 @@
   const weekdayRow=document.getElementById('weekdayRow');
   const grid=document.getElementById('calendarGrid');
   const monthLabel=document.getElementById('monthLabel');
+  const currencyFmt=new Intl.NumberFormat(undefined,{style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:2});
   const WEEKDAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
   function renderWeekdayHeader(){
@@ -125,8 +126,8 @@
       const yyyy=y, mm=String(m1).padStart(2,'0'), dd=String(d).padStart(2,'0');
       const key=`${yyyy}-${mm}-${dd}`;
       const dayTotals=totals[key]||{cashTotal:0,soldTotal:0};
-      const cashLabel=dayTotals.cashTotal?`$${dayTotals.cashTotal.toFixed(2)}`:'';
-      const soldLabel=dayTotals.soldTotal?`$${dayTotals.soldTotal.toFixed(2)}`:'';
+      const cashLabel=dayTotals.cashTotal?currencyFmt.format(dayTotals.cashTotal):'';
+      const soldLabel=dayTotals.soldTotal?currencyFmt.format(dayTotals.soldTotal):'';
 
       const c=document.createElement('div'); c.className='cell';
       c.innerHTML=`<div class="daynum">${d}</div><div class="amounts"><div class="sold">${soldLabel}</div><div class="amt">${cashLabel}</div></div>`;
