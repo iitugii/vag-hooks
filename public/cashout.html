@@ -6,37 +6,61 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Cashout Calendar</title>
   <style>
-    :root { --bg:#f7f7fb; --fg:#1f2328; --muted:#6b7280; --line:#e5e7eb; --success:#059669; --card:#fff; --bar:#0f172a; --btn:#374151; --btnh:#4b5563; --link:#2563eb; --linkh:#1d4ed8; }
+    :root { --bg:#f3f4ff; --bg-soft:#eef2ff; --card:#ffffff; --card-soft:#ffffff; --line:#e5e7eb; --fg:#0f172a; --muted:#6b7280; --success:#16a34a; --accent:#4f46e5; --accent-alt:#0ea5e9; --danger:#b91c1c; --pill:#e5e7eb; }
     *{box-sizing:border-box}
-    body{margin:0;background:var(--bg);color:var(--fg);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
-    header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px;background:var(--bar);color:#fff}
-    .title{margin:0;font-size:1.25rem;font-weight:700}
+    body{
+      margin:0;
+      min-height:100vh;
+      background:radial-gradient(circle at top,#e5e7eb 0,#f9fafb 40%,#eef2ff 100%);
+      color:var(--fg);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+      -webkit-font-smoothing:antialiased;
+      position:relative;
+      overflow-x:hidden;
+      z-index:1;
+    }
+    body::before{content:none;}
+    header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 24px 10px;background:rgba(15,23,42,0.96);border-bottom:1px solid #020617;backdrop-filter:blur(16px);position:sticky;top:0;z-index:10;color:#e5e7eb}
+    .title{margin:0;font-size:1.1rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
     .actions{display:flex;gap:8px;align-items:center}
-    .token{border:1px solid #334155;background:#0b1220;color:#fff;padding:8px 10px;border-radius:8px;min-width:220px}
-    .btn{border:0;background:var(--btn);color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer}
-    .btn:hover{background:var(--btnh)}
-    .link{color:#fff;background:var(--link);padding:8px 12px;border-radius:8px;text-decoration:none}
-    .link:hover{background:var(--linkh)}
-    .wrap{max-width:1100px;margin:16px auto;padding:0 16px 32px}
+    .token{border-radius:999px;background:rgba(15,23,42,0.9);border:1px solid #1f2937;color:#e5e7eb;padding:6px 10px;min-width:210px;font-size:.8rem}
+    .token::placeholder{color:var(--muted)}
+    .btn{border-radius:999px;border:0;background:#1f2937;color:#e5e7eb;padding:6px 10px;font-size:.8rem;cursor:pointer;display:inline-flex;align-items:center;gap:4px}
+    .btn:hover{filter:brightness(1.08)}
+    .link{color:var(--muted);background:#020617;padding:6px 10px;border-radius:999px;text-decoration:none;border:1px solid #1e293b;font-size:.8rem;display:inline-flex;align-items:center;gap:4px}
+    .link:hover{color:#e5e7eb;border-color:#334155}
+    .wrap{max-width:1100px;margin:12px auto 24px;padding:0 16px 32px}
     .nav{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:12px 0 8px}
-    .month-label{font-size:1.25rem;font-weight:700}
-    .grid{display:grid;grid-template-columns:repeat(7,1fr);border:1px solid var(--line);background:var(--line);border-radius:10px;overflow:hidden}
-    .weekday{background:#f3f4f6;color:#111827;padding:10px;font-weight:600;text-align:center;border-right:1px solid var(--line)}
+    .month-label{font-size:1.1rem;font-weight:600;color:#0f172a}
+    .grid{display:grid;grid-template-columns:repeat(8,1fr);border:1px solid var(--line);background:var(--card);border-radius:18px;overflow:hidden;box-shadow:0 18px 40px rgba(15,23,42,0.16)}
+    .weekday{background:#e5e7eb;color:#374151;padding:10px;font-weight:600;text-align:center;border-right:1px solid #e5e7eb;text-transform:uppercase;letter-spacing:.08em;font-size:.7rem}
     .weekday:last-child{border-right:0}
-    .cell{background:var(--card);min-height:110px;padding:8px;display:flex;flex-direction:column;border-right:1px solid var(--line);border-top:1px solid var(--line)}
-    .cell:nth-child(7n){border-right:0}
-    .cell.empty{background:#fafafa}
-    .daynum{font-weight:700;font-size:.95rem;color:var(--muted)}
+    .cell{background:var(--card-soft);min-height:120px;padding:10px;display:flex;flex-direction:column;border-right:1px solid var(--line);border-top:1px solid var(--line);transition:background-color .12s ease,box-shadow .12s ease}
+    .cell.empty{background:#f9fafb}
+    .cell.other-month{background:#f3f4ff}
+    .cell:not(.empty):hover{background:#e5e7ff;box-shadow:0 0 0 1px rgba(148,163,184,0.5) inset}
+    .daynum{font-weight:600;font-size:.8rem;color:var(--muted);margin-bottom:2px}
     .amounts{margin-top:auto;display:flex;flex-direction:column;gap:4px;font-variant-numeric:tabular-nums}
-    .meta{color:#111827;font-weight:700;font-size:1.05rem}
-    .sold{font-weight:800;color:var(--link)}
-    .amt{font-weight:800;color:var(--success)}
-    .subtle{color:var(--muted);font-size:.9rem}
+    .meta{color:#111827;font-weight:500;font-size:.85rem}
+    .sold{font-weight:600;color:var(--accent-alt);font-size:.85rem}
+    .amt{font-weight:600;color:var(--success);font-size:.85rem}
+    .subtle{color:var(--muted);font-size:.85rem}
+    .counted-input{margin-top:6px;width:100%;font-size:.78rem;padding:4px 6px;border-radius:999px;border:1px solid #d1d5db;background:#f9fafb;color:#111827}
+    .counted-input:focus{outline:none;border-color:#4f46e5;box-shadow:0 0 0 1px rgba(79,70,229,.5);background:#fff}
+    .var-line{margin-top:3px;font-size:.8rem;font-variant-numeric:tabular-nums;}
+    .var-zero{color:var(--success);font-weight:600;}
+    .var-over{color:#b91c1c;font-weight:600;}
+    .var-under{color:var(--success);font-weight:600;}
+    .week-total{background:#f3f4ff;font-size:.78rem;padding:10px 10px 8px;display:flex;flex-direction:column;justify-content:flex-start;font-variant-numeric:tabular-nums;border-left:2px solid #4f46e5}
+    .week-total strong{font-weight:700;margin-bottom:6px;color:#111827;letter-spacing:.08em;text-transform:uppercase;font-size:.7rem}
+    .week-total span{margin-bottom:2px}
   </style>
 </head>
 <body>
 <header>
-  <h1 class="title">Cashout Calendar</h1>
+  <div style="display:flex;align-items:center;gap:10px;min-width:0">
+    <h1 class="title">Cashout Calendar</h1>
+  </div>
   <div class="actions">
     <input id="tokenInput" class="token" type="text" placeholder="Dashboard token (DASH_TOKEN)"/>
     <button id="applyToken" class="btn">Apply Token</button>
@@ -84,11 +108,45 @@
   const integerFmt=new Intl.NumberFormat(undefined,{maximumFractionDigits:0});
   const WEEKDAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
+  const COUNTED_KEY_PREFIX='CASHOUT_COUNTED_';
+
+  function getCountedCash(dateKey){
+    const v=localStorage.getItem(COUNTED_KEY_PREFIX+dateKey);
+    return v!=null&&v!==''?Number(v):null;
+  }
+
+  function setCountedCash(dateKey,value){
+    if(value==null||value===''){
+      localStorage.removeItem(COUNTED_KEY_PREFIX+dateKey);
+    }else{
+      localStorage.setItem(COUNTED_KEY_PREFIX+dateKey,String(value));
+    }
+  }
+
+  function formatVariance(delta){
+    // ensure minus sign hugs the number, no extra spacing
+    const sign=delta>0?'+':delta<0?'-':'';
+    return `${sign}${currencyFmt.format(Math.abs(delta))}`;
+  }
+
+  function varianceClass(delta){
+    if(!isFinite(delta))return'';
+    if(delta===0)return'var-zero';
+    // delta = counted - cash
+    // surplus (counted > cash) -> positive -> green
+    // deficit (counted < cash) -> negative -> red
+    return delta>0?'var-under':'var-over';
+  }
+
   function renderWeekdayHeader(){
     weekdayRow.innerHTML='';
     WEEKDAYS.forEach(w=>{
       const el=document.createElement('div'); el.className='weekday'; el.textContent=w; weekdayRow.appendChild(el);
     });
+    const weekEl=document.createElement('div');
+    weekEl.className='weekday';
+    weekEl.textContent='Week';
+    weekdayRow.appendChild(weekEl);
   }
 
   function firstOfMonth(y,m1){return new Date(y,m1-1,1)}
@@ -97,19 +155,38 @@
 
   async function fetchMonthData(year,month){
     const headers={}; const t=getToken(); if(t) headers['x-auth-token']=t;
+    // main month
     const r=await fetch(`/cashout/data?year=${year}&month=${month}`,{headers});
     if(!r.ok) throw new Error(`HTTP ${r.status}`);
     const {data}=await r.json();
     const map=Object.create(null);
-    for(const it of data){
-      const k=(typeof it.day==='string'?it.day:new Date(it.day).toISOString()).slice(0,10);
-      map[k]={
-        cashTotal:Number(it.cashTotal||0),
-        soldTotal:Number(it.soldTotal||0),
-        clientCount:Number(it.clientCount||0),
-        serviceCount:Number(it.serviceCount||0)
-      };
+    const addIntoMap=(rows)=>{
+      for(const it of rows){
+        const k=(typeof it.day==='string'?it.day:new Date(it.day).toISOString()).slice(0,10);
+        const existing=map[k]||{cashTotal:0,soldTotal:0,clientCount:0,serviceCount:0};
+        map[k]={
+          cashTotal:existing.cashTotal+Number(it.cashTotal||0),
+          soldTotal:existing.soldTotal+Number(it.soldTotal||0),
+          clientCount:existing.clientCount+Number(it.clientCount||0),
+          serviceCount:existing.serviceCount+Number(it.serviceCount||0)
+        };
+      }
+    };
+    addIntoMap(data||[]);
+
+    // also pull the previous month so the last week of it can show
+    const prevMonth=month===1?12:month-1;
+    const prevYear=month===1?(year-1):year;
+    try{
+      const rPrev=await fetch(`/cashout/data?year=${prevYear}&month=${prevMonth}`,{headers});
+      if(rPrev.ok){
+        const {data:prevData}=await rPrev.json();
+        addIntoMap(prevData||[]);
+      }
+    }catch(e){
+      console.warn('cashout/data previous month failed',e);
     }
+
     return map;
   }
 
@@ -122,27 +199,166 @@
     let totals={};
     try { totals=await fetchMonthData(y,m1) } catch(e){ console.warn('cashout/data failed', e) }
 
-    // leading blanks
-    for(let i=0;i<startDow;i++){ const c=document.createElement('div'); c.className='cell empty'; grid.appendChild(c) }
+    // tracking for weeks (sales, clients, cash, counted cash)
+    let weekSalesTotal=0;
+    let weekClientTotal=0;
+    let weekCashTotal=0;
+    let weekCountedTotal=0;
+    let weekHasAnyCounted=false;
+    let weekHasAnySales=false;
+    let weekHasAnyCash=false;
+    let dayIndexInWeek=0; // 0=Sun,6=Sat, always per-row
 
-    // day cells
-    for(let d=1; d<=dim; d++){
-      const yyyy=y, mm=String(m1).padStart(2,'0'), dd=String(d).padStart(2,'0');
-      const key=`${yyyy}-${mm}-${dd}`;
-      const dayTotals=totals[key]||{cashTotal:0,soldTotal:0,clientCount:0,serviceCount:0};
+    const appendWeekTotalCell=()=>{
+      const soldText=weekHasAnySales?currencyFmt.format(weekSalesTotal):'';
+      // counted: show red 0 when there is no input
+      const countedText=weekHasAnyCounted?currencyFmt.format(weekCountedTotal):'0';
+      const reportedCashText=weekHasAnyCash?currencyFmt.format(weekCashTotal):'';
+      // weekly variance uses same direction as daily: counted - cash
+      const delta=weekHasAnyCounted&&weekHasAnyCash?(weekCountedTotal-weekCashTotal):null;
+      const vClass=delta!=null?varianceClass(delta):'';
+      const vText=delta!=null?formatVariance(delta):'';
+      const weekCell=document.createElement('div');
+      weekCell.className='cell week-total';
+      weekCell.innerHTML=`<strong>Week</strong>
+        <span>Sales: ${soldText||'-'}</span>
+        <span>Clients: ${weekClientTotal>0?integerFmt.format(weekClientTotal):'-'}</span>
+        <span>Cash Reported: ${reportedCashText||'-'}</span>
+        <span>Counted: <span class="${weekHasAnyCounted?'':'var-over'}">${countedText}</span></span>
+        <span class="var-line ${vClass}">${vText?`Cash Var: ${vText}`:''}</span>`;
+      grid.appendChild(weekCell);
+      weekSalesTotal=0;
+      weekClientTotal=0;
+      weekCashTotal=0;
+      weekCountedTotal=0;
+      weekHasAnyCounted=false;
+      weekHasAnySales=false;
+      weekHasAnyCash=false;
+      dayIndexInWeek=0;
+    };
+
+    // helper to build a single cell; structure is frozen
+    const buildCell=(displayDay,key,dayTotals,isOtherMonth)=>{
       const cashLabel=dayTotals.cashTotal?currencyFmt.format(dayTotals.cashTotal):'';
       const soldLabel=dayTotals.soldTotal?currencyFmt.format(dayTotals.soldTotal):'';
-      const hasMeta = (dayTotals.clientCount || dayTotals.serviceCount);
-      const metaLabel = hasMeta ? `Clients: ${integerFmt.format(dayTotals.clientCount||0)}, Services: ${integerFmt.format(dayTotals.serviceCount||0)}` : '';
+      const hasMeta=(dayTotals.clientCount||dayTotals.serviceCount);
+      const metaLabel=hasMeta?`Clients: ${integerFmt.format(dayTotals.clientCount||0)}, Services: ${integerFmt.format(dayTotals.serviceCount||0)}`:'';
 
-      const c=document.createElement('div'); c.className='cell';
-      c.innerHTML=`<div class="daynum">${d}</div><div class="amounts">${metaLabel?`<div class="meta">${metaLabel}</div>`:''}<div class="sold">${soldLabel}</div><div class="amt">${cashLabel}</div></div>`;
+      const counted=getCountedCash(key);
+      const delta=(counted!=null?counted:0)-(dayTotals.cashTotal||0);
+      const hasVariance=counted!=null&&(dayTotals.cashTotal||0);
+      const varianceText=hasVariance?formatVariance(delta):'';
+      const vClass=hasVariance?varianceClass(delta):'';
+
+      if(dayTotals.soldTotal){
+        weekHasAnySales=true;
+        weekSalesTotal+=dayTotals.soldTotal;
+      }
+      if(dayTotals.cashTotal){
+        weekHasAnyCash=true;
+        weekCashTotal+=dayTotals.cashTotal;
+      }
+      if(counted!=null){
+        weekHasAnyCounted=true;
+        weekCountedTotal+=counted;
+      }
+      if(dayTotals.clientCount){
+        weekClientTotal+=dayTotals.clientCount;
+      }
+
+      const c=document.createElement('div');
+      c.className='cell'+(isOtherMonth?' other-month':'');
+      c.innerHTML=`<div class="daynum">${displayDay}</div>
+        <div class="amounts">
+          ${metaLabel?`<div class="meta">${metaLabel}</div>`:''}
+          <div class="sold">${soldLabel}</div>
+          <div class="amt">${cashLabel}</div>
+          <input class="counted-input" type="number" step="0.01" placeholder="Counted cash" value="${counted!=null?counted:''}" data-date="${key}">
+          <div class="var-line ${vClass}">${varianceText?`Variance: ${varianceText}`:''}</div>
+        </div>`;
       grid.appendChild(c);
+      dayIndexInWeek++;
+    };
+
+    // adjacent month helpers
+    const prevMonth=m1===1?12:m1-1;
+    const prevYear=m1===1?(y-1):y;
+    const prevDim=daysInMonth(prevYear,prevMonth);
+    const nextMonth=m1===12?1:m1+1;
+    const nextYear=m1===12?(y+1):y;
+
+    // current month rows, one week at a time, including adjacent months
+    let currentDay=1;
+    let nextMonthDay=1;
+    while(currentDay<=dim || dayIndexInWeek!==0){
+      // if starting a brand new calendar (first row, no week totals yet)
+      if(weekSalesTotal===0 && weekClientTotal===0 && weekCashTotal===0 && weekCountedTotal===0 && currentDay===1){
+        // leading cells from previous month
+        for(let i=startDow-1;i>=0;i--){
+          const displayDay=prevDim-i;
+          const mm=String(prevMonth).padStart(2,'0');
+          const dd=String(displayDay).padStart(2,'0');
+          const key=`${prevYear}-${mm}-${dd}`;
+          const dayTotals=totals[key]||{cashTotal:0,soldTotal:0,clientCount:0,serviceCount:0};
+          buildCell(displayDay,key,dayTotals,true);
+        }
+      }
+
+      // fill this week’s day slots with current month, then next month if needed
+      while(dayIndexInWeek<7 && (currentDay<=dim || nextMonthDay===1 || currentDay>dim)){
+        if(currentDay<=dim){
+          const yyyy=y, mm=String(m1).padStart(2,'0'), dd=String(currentDay).padStart(2,'0');
+          const key=`${yyyy}-${mm}-${dd}`;
+          const dayTotals=totals[key]||{cashTotal:0,soldTotal:0,clientCount:0,serviceCount:0};
+          buildCell(currentDay,key,dayTotals,false);
+          currentDay++;
+        } else {
+          const mmNext=String(nextMonth).padStart(2,'0');
+          const ddNext=String(nextMonthDay).padStart(2,'0');
+          const keyNext=`${nextYear}-${mmNext}-${ddNext}`;
+          const dayTotalsNext=totals[keyNext]||{cashTotal:0,soldTotal:0,clientCount:0,serviceCount:0};
+          buildCell(nextMonthDay,keyNext,dayTotalsNext,true);
+          nextMonthDay++;
+        }
+      }
+
+      // if we couldn't place any cells (e.g., month starts on Sunday and no days left), break
+      if(dayIndexInWeek===0) break;
+
+      // add the week summary cell at fixed column 8
+      appendWeekTotalCell();
     }
 
-    // trailing blanks
-    const cellsSoFar=startDow+dim, pad=(7-(cellsSoFar%7))%7;
-    for(let i=0;i<pad;i++){ const c=document.createElement('div'); c.className='cell empty'; grid.appendChild(c) }
+    // wire input handlers (update in-place to avoid re-render jumpiness)
+    grid.querySelectorAll('.counted-input').forEach(input=>{
+      input.addEventListener('input',e=>{
+        const el=e.target;
+        const dateKey=el.getAttribute('data-date');
+        const raw=el.value.trim();
+        const val=raw===''?null:Number(raw);
+        setCountedCash(dateKey,val);
+
+        // recompute variance for this cell only
+        const parentCell=el.closest('.cell');
+        if(!parentCell)return;
+        const dateKeyAttr=el.getAttribute('data-date');
+        const totalsKey=dateKeyAttr;
+        const cash=(totals[totalsKey]?.cashTotal)||0;
+        const countedVal=val!=null?val:0;
+        const hasVarianceLocal=val!=null&&cash;
+        const deltaLocal=hasVarianceLocal?(countedVal-cash):0;
+        const varLine=parentCell.querySelector('.var-line');
+        if(varLine){
+          varLine.classList.remove('var-zero','var-under','var-over');
+          if(hasVarianceLocal){
+            varLine.textContent=`Variance: ${formatVariance(deltaLocal)}`;
+            varLine.classList.add(varianceClass(deltaLocal));
+          }else{
+            varLine.textContent='';
+          }
+        }
+      });
+    });
   }
 
   let Y=(new Date()).getFullYear(), M=(new Date()).getMonth()+1;
