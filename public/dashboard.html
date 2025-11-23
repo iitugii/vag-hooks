@@ -1,186 +1,555 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Vagaro Webhooks Dashboard</title>
-<style>
-  :root { --bg:#f7f7f7; --text:#333; --muted:#666; --card:#fff; --line:#eaeaea; --pill:#eef; --accent:#0b5cff;}
-  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 2rem; background: var(--bg); color: var(--text); }
-  h1 { margin: 0 0 .25rem 0; }
-  .sub { color: var(--muted); margin: 0 0 1rem 0; }
-  .banner { display:none; margin: 0 0 1rem 0; padding: .6rem .8rem; background:#fff6d6; border:1px solid #ffe08a; border-radius:10px; }
-  .controls { display:flex; gap:.5rem; flex-wrap:wrap; margin: 1rem 0; align-items:center; }
-  input, button { padding:.55rem .7rem; border:1px solid #ccc; border-radius:10px; background:#fff; }
-  button { cursor:pointer; }
-  button.primary { background: var(--accent); color:#fff; border:1px solid var(--accent); }
-  table { width:100%; border-collapse: collapse; background: var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
-  th, td { padding: .65rem 1rem; border-bottom:1px solid var(--line); font-size:14px; }
-  th { background:#fafafa; text-align:left; }
-  tbody tr:hover { background:#f0f8ff; }
-  .right { text-align:right; }
-  .pill { padding:.15rem .45rem; border-radius:999px; background:var(--pill); }
-  code { background:#eef; padding:.15rem .35rem; border-radius:6px; }
-  .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.5); display:none; align-items:center; justify-content:center; }
-  .modal { width:min(900px, 95vw); background:#fff; border-radius:12px; padding:1rem; box-shadow:0 6px 24px rgba(0,0,0,.2); }
-  pre { max-height:60vh; overflow:auto; background:#0b1020; color:#e6f1ff; padding:1rem; border-radius:8px; }
-  .row { display:flex; gap:.5rem; align-items:center; }
-  .spacer { flex:1; }
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Sales & Webhooks Dashboard</title>
+  <style>
+    :root {
+      --bg:#0f172a;
+      --bg-soft:#111827;
+      --card:#020617;
+      --card-soft:#020617;
+      --line:#1e293b;
+      --text:#e5e7eb;
+      --muted:#9ca3af;
+      --accent:#22c55e;
+      --accent-soft:rgba(34,197,94,0.12);
+      --accent-alt:#38bdf8;
+      --danger:#f97373;
+      --pill:#1e293b;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      min-height:100vh;
+      background:radial-gradient(circle at top,left,#1e293b 0,#020617 50%,#000 100%);
+      color:var(--text);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+      -webkit-font-smoothing:antialiased;
+    }
+    header{
+      padding:16px 24px 8px;
+      border-bottom:1px solid #111827;
+      backdrop-filter:blur(16px);
+      background:linear-gradient(to right,rgba(15,23,42,0.9),rgba(15,23,42,0.7));
+      position:sticky;
+      top:0;
+      z-index:10;
+    }
+    .header-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;gap:16px;justify-content:space-between}
+    .title-block h1{margin:0;font-size:1.25rem;letter-spacing:.03em}
+    .title-block p{margin:2px 0 0;font-size:.78rem;color:var(--muted)}
+    .header-actions{display:flex;align-items:center;gap:8px}
+    .token-input{
+      border-radius:999px;
+      background:rgba(15,23,42,0.9);
+      border:1px solid #1f2937;
+      color:var(--text);
+      padding:6px 10px;
+      font-size:.78rem;
+      min-width:200px;
+    }
+    .token-input::placeholder{color:var(--muted)}
+    button{
+      border-radius:999px;
+      border:0;
+      padding:6px 10px;
+      font-size:.78rem;
+      cursor:pointer;
+      display:inline-flex;
+      align-items:center;
+      gap:4px;
+      background:#1f2937;
+      color:var(--text);
+    }
+    button.primary{background:var(--accent);color:#022c22}
+    button.secondary{background:#020617;color:var(--muted);border:1px solid #1e293b}
+    button:hover{filter:brightness(1.05)}
+    .link-btn{text-decoration:none;border-radius:999px;padding:6px 10px;font-size:.78rem;background:#020617;color:var(--muted);border:1px solid #1e293b;display:inline-flex;align-items:center;gap:4px}
+    .link-btn:hover{color:var(--text);border-color:#334155}
+    .chip{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding:3px 8px;
+      border-radius:999px;
+      font-size:.7rem;
+      background:rgba(15,23,42,0.9);
+      border:1px solid #1e293b;
+      color:var(--muted);
+    }
+    main{max-width:1200px;margin:0 auto;padding:12px 16px 32px}
+    .layout{display:grid;grid-template-columns:2.1fr 1.1fr;gap:16px;align-items:flex-start}
+    .card{
+      background:radial-gradient(circle at top left,rgba(15,23,42,0.95),rgba(2,6,23,0.98));
+      border-radius:18px;
+      border:1px solid #020617;
+      box-shadow:0 22px 60px rgba(0,0,0,0.7);
+      padding:14px 14px 16px;
+      position:relative;
+      overflow:hidden;
+    }
+    .card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+    .card-title{font-size:.8rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
+    .card-sub{font-size:.7rem;color:var(--muted)}
+    .pill{border-radius:999px;padding:3px 8px;font-size:.7rem;background:var(--pill);color:var(--muted);border:1px solid #111827}
+    canvas{width:100%;height:100%;}
+
+    .stats-grid{
+      margin-top:16px;
+      display:grid;
+      grid-template-columns:repeat(4,minmax(0,1fr));
+      gap:10px;
+    }
+    .stat{
+      background:radial-gradient(circle at top left,rgba(15,23,42,0.9),rgba(15,23,42,0.95));
+      border-radius:14px;
+      border:1px solid #020617;
+      padding:10px 12px;
+      min-height:72px;
+      display:flex;
+      flex-direction:column;
+      justify-content:space-between;
+    }
+    .stat-label{font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+    .stat-value{font-size:1.05rem;font-weight:600;margin-top:4px}
+    .stat-note{font-size:.7rem;color:var(--muted);margin-top:2px}
+    .stat-accent{color:var(--accent)}
+    .stat-danger{color:var(--danger)}
+
+    .events-list{
+      margin-top:8px;
+      max-height:320px;
+      overflow:auto;
+      border-radius:10px;
+      border:1px solid #020617;
+      background:rgba(15,23,42,0.7);
+    }
+    .event-row{
+      display:grid;
+      grid-template-columns:1.4fr 1fr 1.1fr auto;
+      gap:6px;
+      padding:7px 9px;
+      font-size:.75rem;
+      border-bottom:1px solid #020617;
+      align-items:center;
+    }
+    .event-row:nth-child(odd){background:rgba(15,23,42,0.5)}
+    .event-row:last-child{border-bottom:none}
+    .event-id{font-family:ui-monospace,Menlo,Consolas,monospace;color:var(--muted);font-size:.7rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .event-pill{border-radius:999px;padding:3px 7px;font-size:.68rem;background:rgba(15,23,42,0.9);border:1px solid #1f2937;color:var(--text)}
+    .event-time{color:var(--muted)}
+    .empty-msg{padding:10px;font-size:.75rem;color:var(--muted)}
+
+    .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:40}
+    .modal{width:min(900px,95vw);max-height:80vh;background:#020617;border-radius:16px;border:1px solid #1e293b;box-shadow:0 24px 80px rgba(0,0,0,.9);padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+    .modal-header{display:flex;align-items:center;justify-content:space-between;font-size:.8rem;color:var(--muted)}
+    .modal-pre{flex:1;overflow:auto;background:#020617;color:#e5e7eb;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.78rem;padding:10px;border-radius:10px;border:1px solid #111827}
+
+    .banner{display:none;margin-top:6px;font-size:.7rem;color:#fbbf24}
+    .banner span{opacity:.9}
+
+    .status-dot{width:8px;height:8px;border-radius:999px;background:#22c55e;display:inline-block;margin-right:4px}
+    .status-dot.offline{background:#9ca3af}
+
+    @media (max-width:900px){
+      .layout{grid-template-columns:1fr}
+      header{padding:12px 16px 6px}
+      main{padding:10px 12px 28px}
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
 </head>
 <body>
-  <div id="banner" class="banner">🔒 Protected: a token is required to view and export events.</div>
-  <h1>Vagaro Webhooks</h1>
-  <!-- replace simple link with this script-driven link -->
-<p class="sub"><a id="cashoutLink" href="/cashout">Cashout Calendar</a></p>
-<script>
-  // after defining `el.auth` in your script:
-  const cashoutLink = document.getElementById("cashoutLink");
-  function updateCashoutLink(){
-    const t = (document.getElementById("auth")?.value || "").trim();
-    cashoutLink.href = t ? `/cashout?auth=${encodeURIComponent(t)}` : `/cashout`;
-  }
-  updateCashoutLink();
-  document.getElementById("auth")?.addEventListener("input", updateCashoutLink);
-</script>
+  <header>
+    <div class="header-inner">
+      <div class="title-block">
+        <h1>Sales & Webhook Activity</h1>
+        <p>2025 cash trend, live stats, and recent webhook feed.</p>
+      </div>
+      <div class="header-actions">
+        <span class="chip"><span class="status-dot" id="statusDot"></span><span id="statusLabel">Connecting…</span></span>
+        <input id="tokenInput" class="token-input" placeholder="Dashboard token (optional)" />
+        <button id="applyToken" class="secondary">Apply</button>
+        <a id="cashoutLink" class="link-btn" href="/cashout">Cashout</a>
+      </div>
+    </div>
+    <div class="header-inner">
+      <div class="banner" id="protectBanner"><span>Protected mode: token is required on production. Using your local token if provided.</span></div>
+    </div>
+  </header>
 
-  <p class="sub">Recent events from your Railway + Postgres capture service.</p>
+  <main>
+    <div class="layout">
+      <section class="card" id="chartCard">
+        <div class="card-header">
+          <div>
+            <div class="card-title">2025 Monthly Sales</div>
+            <div class="card-sub">Cash collected per month, matched to calendar logic.</div>
+          </div>
+          <span class="pill" id="monthRangeLabel">Jan–Dec 2025</span>
+        </div>
+        <div style="height:220px;">
+          <canvas id="salesChart"></canvas>
+        </div>
+        <div class="stats-grid" id="statsGrid">
+          <div class="stat">
+            <div class="stat-label">Total Sales YTD</div>
+            <div class="stat-value stat-accent" id="statYtd">–</div>
+            <div class="stat-note" id="statYtdCompare">Sum of 2025 cash sales vs 2024</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Current Month Sales</div>
+            <div class="stat-value" id="statCurrentMonth">–</div>
+            <div class="stat-note" id="statCurrentMonthLabel">–</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Current Month Clients</div>
+            <div class="stat-value" id="statCurrentClients">–</div>
+            <div class="stat-note">Unique clients seen this month</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Clients — High & Low</div>
+            <div class="stat-value" id="statClientsHighLow">–</div>
+            <div class="stat-note" id="statClientsHighLowLabel">–</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Last Month Clients vs 2024</div>
+            <div class="stat-value" id="statLastMonthClientsCompare">–</div>
+            <div class="stat-note" id="statLastMonthClientsCompareLabel">–</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Best & Slowest Months</div>
+            <div class="stat-value" id="statBestWorst">–</div>
+            <div class="stat-note" id="statBestWorstLabel">–</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Last Month vs 2024</div>
+            <div class="stat-value" id="statLastMonthCompare">–</div>
+            <div class="stat-note" id="statLastMonthCompareLabel">–</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Current Month vs 2024</div>
+            <div class="stat-value" id="statCurrentMonthCompare">–</div>
+            <div class="stat-note" id="statCurrentMonthCompareLabel">–</div>
+          </div>
+        </div>
+      </section>
 
-  <div class="controls">
-    <input id="filterType" placeholder="entityType (e.g., customer)" />
-    <input id="filterAction" placeholder="action (e.g., updated)" />
-    <input id="dateFrom" type="date" />
-    <input id="dateTo" type="date" />
-    <input id="limit" type="number" min="1" max="200" value="50" style="width:90px" />
-    <div class="spacer"></div>
-    <input id="auth" placeholder="auth token (if required)" style="width:220px" />
-    <button id="apply">Apply</button>
-    <button id="refresh">Refresh</button>
-    <button id="download" class="primary">Download Excel</button>
-  </div>
-
-  <table id="eventsTable">
-    <thead>
-      <tr>
-        <th>Event ID</th>
-        <th>Type</th>
-        <th>Action</th>
-        <th>Created</th>
-        <th>Received</th>
-        <th class="right">Payload</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
+      <section class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Recent Webhooks</div>
+            <div class="card-sub">Live feed of latest captured events.</div>
+          </div>
+          <span class="pill" id="eventLimitLabel">Last 30 events</span>
+        </div>
+        <div class="events-list" id="eventsList">
+          <div class="empty-msg">Loading recent events…</div>
+        </div>
+      </section>
+    </div>
+  </main>
 
   <div class="modal-backdrop" id="modalBackdrop">
     <div class="modal">
-      <div class="row" style="justify-content:space-between;">
-        <strong id="modalTitle">Payload</strong>
-        <button id="closeModal">Close</button>
+      <div class="modal-header">
+        <div id="modalTitle">Payload</div>
+        <button id="closeModal" class="secondary">Close</button>
       </div>
-      <pre id="modalPre">{}</pre>
+      <pre id="modalPre" class="modal-pre">{}</pre>
     </div>
   </div>
 
-<script>
-  const el = {
-    banner: document.getElementById("banner"),
-    tbody: document.querySelector("#eventsTable tbody"),
-    filterType: document.getElementById("filterType"),
-    filterAction: document.getElementById("filterAction"),
-    dateFrom: document.getElementById("dateFrom"),
-    dateTo: document.getElementById("dateTo"),
-    limit: document.getElementById("limit"),
-    auth: document.getElementById("auth"),
-    apply: document.getElementById("apply"),
-    refresh: document.getElementById("refresh"),
-    download: document.getElementById("download"),
-    modalBackdrop: document.getElementById("modalBackdrop"),
-    modalPre: document.getElementById("modalPre"),
-    modalTitle: document.getElementById("modalTitle"),
-    closeModal: document.getElementById("closeModal"),
-  };
+  <script>
+    const currencyFmt = new Intl.NumberFormat(undefined,{style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:2});
+    const intFmt = new Intl.NumberFormat(undefined,{maximumFractionDigits:0});
+    const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-  // Read ?auth= from URL and prefill token
-  const url = new URL(window.location.href);
-  const paramToken = url.searchParams.get("auth");
-  if (paramToken) el.auth.value = paramToken;
+    function qp(name){return new URL(location.href).searchParams.get(name)}
+    function getToken(){return qp('auth')||localStorage.getItem('DASH_TOKEN')||''}
+    function setToken(t){if(t)localStorage.setItem('DASH_TOKEN',t)}
 
-  // Ask the server if a token is required; show banner if so
-  fetch("/config").then(r => r.json()).then(cfg => {
-    if (cfg.protected) el.banner.style.display = "block";
-  }).catch(()=>{});
+    const tokenInput=document.getElementById('tokenInput');
+    const applyTokenBtn=document.getElementById('applyToken');
+    const cashoutLink=document.getElementById('cashoutLink');
+    const statusDot=document.getElementById('statusDot');
+    const statusLabel=document.getElementById('statusLabel');
+    const protectBanner=document.getElementById('protectBanner');
 
-  function buildQuery() {
-    const q = new URLSearchParams();
-    if (el.filterType.value) q.set("entityType", el.filterType.value.trim());
-    if (el.filterAction.value) q.set("action", el.filterAction.value.trim());
-    if (el.dateFrom.value) q.set("dateFrom", el.dateFrom.value);
-    if (el.dateTo.value) q.set("dateTo", el.dateTo.value);
-    q.set("limit", el.limit.value || "50");
-    return q;
-  }
+    (function initToken(){
+      const t=getToken();
+      tokenInput.value=t;
+      updateCashoutLink();
+    })();
 
-  async function load() {
-    const q = buildQuery();
-    const token = el.auth.value.trim();
-    const res = await fetch("/events?" + q.toString(), {
-      headers: token ? { "x-auth-token": token } : {}
+    function updateCashoutLink(){
+      const t=(tokenInput.value||'').trim();
+      cashoutLink.href=t?`/cashout?auth=${encodeURIComponent(t)}`:'/cashout';
+    }
+
+    applyTokenBtn.onclick=function(){
+      const t=tokenInput.value.trim();
+      setToken(t);
+      const u=new URL(location.href);
+      if(t)u.searchParams.set('auth',t);else u.searchParams.delete('auth');
+      location.href=u.toString();
+    };
+
+    fetch('/config').then(r=>r.json()).then(cfg=>{
+      if(cfg.protected){protectBanner.style.display='block'}
+    }).catch(()=>{});
+
+    let chart;
+
+    async function loadMetrics(){
+      statusLabel.textContent='Loading metrics…';
+      statusDot.classList.remove('offline');
+      const token=getToken().trim();
+      const headers={};
+      if(token)headers['x-auth-token']=token;
+      try{
+        const years=[2025,2024,2023];
+        const results=await Promise.all(years.map(y=>
+          fetch(`/metrics/sales/monthly?year=${y}`,{headers}).then(r=>{
+            if(!r.ok) throw new Error('HTTP '+r.status);
+            return r.json();
+          })
+        ));
+        const dataByYear={};
+        years.forEach((y,idx)=>{
+          const {monthlySales,monthlyClients}=results[idx]||{};
+          dataByYear[y]={
+            sales:Array.isArray(monthlySales)?monthlySales:new Array(12).fill(0),
+            clients:Array.isArray(monthlyClients)?monthlyClients:new Array(12).fill(0),
+          };
+        });
+
+        const sales2025=dataByYear[2025].sales;
+        const clients2025=dataByYear[2025].clients;
+        const sales2024=dataByYear[2024]?.sales||null;
+        const clients2024=dataByYear[2024]?.clients||null;
+
+        renderChart(dataByYear);
+        computeStats(sales2025,clients2025,sales2024,clients2024);
+        statusLabel.textContent='Live with 2025, 2024, 2023 data';
+      }catch(e){
+        statusLabel.textContent='Metrics unavailable; showing zeros';
+        statusDot.classList.add('offline');
+        const zeros=new Array(12).fill(0);
+        renderChart({2025:{sales:zeros,clients:zeros}});
+        computeStats(zeros,zeros,null);
+      }
+    }
+
+    function renderChart(dataByYear){
+      const ctx=document.getElementById('salesChart').getContext('2d');
+      if(chart)chart.destroy();
+
+      const ds2025=dataByYear[2025]?.sales||new Array(12).fill(0);
+      const ds2024=dataByYear[2024]?.sales||new Array(12).fill(0);
+      const ds2023=dataByYear[2023]?.sales||new Array(12).fill(0);
+
+      chart=new Chart(ctx,{
+        type:'line',
+        data:{
+          labels:MONTH_NAMES,
+          datasets:[
+            {
+              label:'2025',
+              data:ds2025,
+              borderColor:'rgba(56,189,248,1)',
+              backgroundColor:'rgba(56,189,248,0.18)',
+              tension:0.35,
+              fill:true,
+              borderWidth:2.3,
+              pointRadius:3,
+              pointBackgroundColor:'rgba(56,189,248,1)'
+            },
+            {
+              label:'2024',
+              data:ds2024,
+              borderColor:'rgba(34,197,94,0.9)',
+              backgroundColor:'rgba(34,197,94,0.10)',
+              tension:0.35,
+              fill:false,
+              borderWidth:1.6,
+              pointRadius:2,
+              pointBackgroundColor:'rgba(34,197,94,0.9)'
+            },
+            {
+              label:'2023',
+              data:ds2023,
+              borderColor:'rgba(148,163,184,0.9)',
+              backgroundColor:'rgba(148,163,184,0.10)',
+              tension:0.35,
+              fill:false,
+              borderWidth:1.2,
+              pointRadius:1.5,
+              pointBackgroundColor:'rgba(148,163,184,0.9)'
+            }
+          ]
+        },
+        options:{
+          responsive:true,
+          maintainAspectRatio:false,
+          plugins:{
+            legend:{display:true,labels:{color:'#9ca3af',font:{size:10}}},
+            tooltip:{callbacks:{label:(c)=>` ${c.dataset.label}: ${currencyFmt.format(c.parsed.y||0)}`}}
+          },
+          scales:{
+            x:{grid:{color:'rgba(15,23,42,0.9)'},ticks:{color:'#9ca3af',font:{size:10}}},
+            y:{grid:{color:'rgba(15,23,42,0.9)'},ticks:{color:'#9ca3af',font:{size:10}},beginAtZero:true}
+          }
+        }
+      });
+    }
+
+    function computeStats(monthlySales,monthlyClients,prevYearSales,prevYearClients){
+      const now=new Date();
+      const year=2025;
+      const currentMonth=(now.getFullYear()===year)?now.getMonth():11;
+      const ytdTotal=monthlySales.reduce((a,b)=>a+b,0);
+      document.getElementById('statYtd').textContent=currencyFmt.format(ytdTotal||0);
+      const prevYtd=(Array.isArray(prevYearSales)?prevYearSales:[]).reduce((a,b)=>a+b,0);
+      const cmpEl=document.getElementById('statYtdCompare');
+      if(prevYtd>0){
+        const delta=ytdTotal-prevYtd;
+        const pct=delta/prevYtd*100;
+        const dir=delta>=0?'+':'';
+        cmpEl.textContent=`vs 2024: ${dir}${currencyFmt.format(delta)} (${dir}${pct.toFixed(1)}%)`;
+      }else{
+        cmpEl.textContent='No 2024 baseline available yet';
+      }
+      const cmVal=monthlySales[currentMonth]||0;
+      document.getElementById('statCurrentMonth').textContent=currencyFmt.format(cmVal);
+      document.getElementById('statCurrentMonthLabel').textContent=MONTH_NAMES[currentMonth]+' 2025';
+      const cmClients=monthlyClients[currentMonth]||0;
+      document.getElementById('statCurrentClients').textContent=intFmt.format(cmClients);
+      const cm2024=Array.isArray(prevYearSales)?(prevYearSales[currentMonth]||0):0;
+      const deltaCm=cmVal-cm2024;
+      const dirCm=deltaCm>=0?'+':'';
+      const cmCompareEl=document.getElementById('statCurrentMonthCompare');
+      const cmCompareNote=document.getElementById('statCurrentMonthCompareLabel');
+      if(cm2024>0){
+        cmCompareEl.textContent=`${dirCm}${currencyFmt.format(deltaCm)}`;
+        cmCompareNote.textContent=`vs 2024 (${dirCm}${(deltaCm/cm2024*100).toFixed(1)}%)`;
+      }else{
+        cmCompareEl.textContent='–';
+        cmCompareNote.textContent='No 2024 baseline for this month';
+      }
+
+      const lastMonth=currentMonth===0?11:currentMonth-1;
+      const lastVal=monthlySales[lastMonth]||0;
+      const last2024=Array.isArray(prevYearSales)?(prevYearSales[lastMonth]||0):0;
+      const lastDelta=lastVal-last2024;
+      const lastDir=lastDelta>=0?'+':'';
+      const lastBox=document.getElementById('statLastMonthCompare');
+      const lastNote=document.getElementById('statLastMonthCompareLabel');
+      if(last2024>0){
+        lastBox.textContent=`${currencyFmt.format(last2024)} → ${currencyFmt.format(lastVal)}`;
+        lastNote.textContent=`${lastDir}${currencyFmt.format(lastDelta)} (${lastDir}${(lastDelta/last2024*100).toFixed(1)}%) — ${MONTH_NAMES[lastMonth]}`;
+      }else{
+        lastBox.textContent='–';
+        lastNote.textContent='No 2024 baseline for last month';
+      }
+      const nowClients=new Date();
+      const cutoffMonth=(nowClients.getFullYear()===year)?nowClients.getMonth():11;
+      const clientsSoFar=monthlyClients.map((v,idx)=>idx<=cutoffMonth?v:null).filter(v=>v!==null);
+      const maxClientsVal=clientsSoFar.length?Math.max(...clientsSoFar):0;
+      const minClientsVal=clientsSoFar.length?Math.min(...clientsSoFar):0;
+      const maxClientsIdx=monthlyClients.indexOf(maxClientsVal);
+      const minClientsIdx=monthlyClients.indexOf(minClientsVal);
+      const highLowValueEl=document.getElementById('statClientsHighLow');
+      const highLowLabelEl=document.getElementById('statClientsHighLowLabel');
+      if(maxClientsVal>0){
+        highLowValueEl.textContent=`${intFmt.format(maxClientsVal)} / ${intFmt.format(minClientsVal)}`;
+        highLowLabelEl.textContent=`High: ${MONTH_NAMES[maxClientsIdx]} • Low: ${MONTH_NAMES[minClientsIdx]} 2025`;
+      }else{
+        highLowValueEl.textContent='–';
+        highLowLabelEl.textContent='No client data yet';
+      }
+
+      const lastMonthClients=monthlyClients[lastMonth]||0;
+      const lastMonthClients2024=Array.isArray(prevYearClients)?(prevYearClients[lastMonth]||0):0;
+      const lastMonthClientsValueEl=document.getElementById('statLastMonthClientsCompare');
+      const lastMonthClientsLabelEl=document.getElementById('statLastMonthClientsCompareLabel');
+      if(lastMonthClients2024>0){
+        const diff=lastMonthClients-lastMonthClients2024;
+        const dir=diff>=0?'+':'';
+        const pct=diff/lastMonthClients2024*100;
+        lastMonthClientsValueEl.textContent=`${intFmt.format(lastMonthClients2024)} → ${intFmt.format(lastMonthClients)}`;
+        lastMonthClientsLabelEl.textContent=`${dir}${intFmt.format(diff)} (${dir}${pct.toFixed(1)}%) — ${MONTH_NAMES[lastMonth]}`;
+      }else if(lastMonthClients>0){
+        lastMonthClientsValueEl.textContent=intFmt.format(lastMonthClients);
+        lastMonthClientsLabelEl.textContent=`${MONTH_NAMES[lastMonth]} 2025 clients (no 2024 data)`;
+      }else{
+        lastMonthClientsValueEl.textContent='–';
+        lastMonthClientsLabelEl.textContent='No client data for last month yet';
+      }
+
+      const maxSalesVal=Math.max(...monthlySales);
+      const minSalesVal=Math.min(...monthlySales);
+      const maxSalesIdx=monthlySales.indexOf(maxSalesVal);
+      const minSalesIdx=monthlySales.indexOf(minSalesVal);
+      const bestLabel=maxSalesVal>0?`${MONTH_NAMES[maxSalesIdx]} — ${currencyFmt.format(maxSalesVal)}`:'No sales yet';
+      const worstLabel=minSalesVal>0?`${MONTH_NAMES[minSalesIdx]} — ${currencyFmt.format(minSalesVal)}`:'No sales yet';
+      document.getElementById('statBestWorst').textContent=maxSalesVal>0?currencyFmt.format(maxSalesVal):'–';
+      document.getElementById('statBestWorstLabel').textContent=`Best: ${bestLabel} • Slowest: ${worstLabel}`;
+    }
+
+    async function loadEvents(){
+      const list=document.getElementById('eventsList');
+      const token=getToken().trim();
+      const headers={};
+      if(token)headers['x-auth-token']=token;
+      try{
+        const res=await fetch('/events?limit=30',{headers});
+        if(!res.ok)throw new Error('HTTP '+res.status);
+        const events=await res.json();
+        if(!Array.isArray(events)||events.length===0){
+          list.innerHTML='<div class="empty-msg">No events yet. Trigger a webhook to see them here.</div>';
+          return;
+        }
+        document.getElementById('eventLimitLabel').textContent=`Last ${events.length} events`;
+        list.innerHTML='';
+        for(const e of events){
+          const row=document.createElement('div');
+          row.className='event-row';
+          row.dataset.payload=JSON.stringify(e.payload,null,2);
+          row.dataset.title=`${e.entityType||'event'}.${e.action||'payload'} — ${e.eventId||e.id}`;
+          const created=e.createdDate?new Date(e.createdDate):null;
+          const received=e.receivedAt?new Date(e.receivedAt):null;
+          row.innerHTML=`
+            <div class="event-id" title="${e.eventId||e.id}">${e.eventId||e.id}</div>
+            <div><span class="event-pill">${e.entityType||'event'}</span></div>
+            <div class="event-time">${created?created.toLocaleString():''}</div>
+            <div style="text-align:right"><button class="secondary view-payload">View payload</button></div>
+          `;
+          list.appendChild(row);
+        }
+      }catch(e){
+        list.innerHTML='<div class="empty-msg">Failed to load events.</div>';
+      }
+    }
+
+    const modalBackdrop=document.getElementById('modalBackdrop');
+    const modalTitle=document.getElementById('modalTitle');
+    const modalPre=document.getElementById('modalPre');
+    document.getElementById('closeModal').onclick=function(){modalBackdrop.style.display='none'};
+    document.getElementById('eventsList').addEventListener('click',function(ev){
+      const btn=ev.target.closest('.view-payload');
+      if(!btn)return;
+      const row=btn.closest('.event-row');
+      modalTitle.textContent=row.dataset.title||'Payload';
+      modalPre.textContent=row.dataset.payload||'{}';
+      modalBackdrop.style.display='flex';
     });
-    if (!res.ok) {
-      el.tbody.innerHTML = `<tr><td colspan="6">Failed to load events (${res.status}). ${res.status===401?'Unauthorized—provide a token.':''}</td></tr>`;
-      return;
-    }
-    const events = await res.json();
-    el.tbody.innerHTML = "";
-    if (!Array.isArray(events) || events.length === 0) {
-      el.tbody.innerHTML = `<tr><td colspan="6">No events yet. Trigger a webhook and refresh.</td></tr>`;
-      return;
-    }
-    for (const e of events) {
-      const tr = document.createElement("tr");
-      const viewBtn = `<button data-id="${e.id}" class="view">View</button>`;
-      tr.innerHTML = `
-        <td><code>${e.eventId}</code></td>
-        <td><span class="pill">${e.entityType}</span></td>
-        <td>${e.action}</td>
-        <td>${new Date(e.createdDate).toLocaleString()}</td>
-        <td>${new Date(e.receivedAt).toLocaleString()}</td>
-        <td class="right">${viewBtn}</td>
-      `;
-      tr.dataset.payload = JSON.stringify(e.payload, null, 2);
-      tr.dataset.title = `${e.entityType}.${e.action} — ${e.eventId}`;
-      el.tbody.appendChild(tr);
-    }
-  }
 
-  // Excel export URL (honors filters + token)
-  function exportUrl() {
-    const q = buildQuery();
-    const token = el.auth.value.trim();
-    if (token) q.set("auth", token);
-    return "/export/webhooks.xlsx?" + q.toString();
-  }
-
-  // Wire UI
-  el.apply.onclick = load;
-  el.refresh.onclick = load;
-  el.download.onclick = () => { window.location.href = exportUrl(); };
-  setInterval(load, 5000);
-
-  document.addEventListener("click", (ev) => {
-    const btn = ev.target.closest("button.view");
-    if (!btn) return;
-    const row = btn.closest("tr");
-    el.modalTitle.textContent = row.dataset.title || "Payload";
-    el.modalPre.textContent = row.dataset.payload || "{}";
-    el.modalBackdrop.style.display = "flex";
-  });
-  el.closeModal.onclick = () => el.modalBackdrop.style.display = "none";
-
-  // Initial load
-  load();
-</script>
+    loadMetrics();
+    loadEvents();
+    setInterval(loadEvents,8000);
+  </script>
 </body>
 </html>
