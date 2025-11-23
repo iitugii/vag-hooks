@@ -35,10 +35,20 @@
     .grid{display:grid;grid-template-columns:repeat(8,1fr);border:1px solid var(--line);background:var(--card);border-radius:18px;overflow:hidden;box-shadow:0 18px 40px rgba(15,23,42,0.16)}
     .weekday{background:#e5e7eb;color:#374151;padding:10px;font-weight:600;text-align:center;border-right:1px solid #e5e7eb;text-transform:uppercase;letter-spacing:.08em;font-size:.7rem}
     .weekday:last-child{border-right:0}
-    .cell{background:var(--card-soft);min-height:120px;padding:10px;display:flex;flex-direction:column;border-right:1px solid var(--line);border-top:1px solid var(--line);transition:background-color .12s ease,box-shadow .12s ease}
+    .cell{background:var(--card-soft);min-height:120px;padding:10px;display:flex;flex-direction:column;border-right:1px solid var(--line);border-top:1px solid var(--line);transition:background-color .12s ease,box-shadow .12s ease,transform .12s ease}
     .cell.empty{background:#f9fafb}
     .cell.other-month{background:#f3f4ff}
     .cell:not(.empty):hover{background:#e5e7ff;box-shadow:0 0 0 1px rgba(148,163,184,0.5) inset}
+    .cell.stamped{position:relative;overflow:hidden}
+    .cell.stamped::after{
+      content:'';
+      position:absolute;
+      inset:4px;
+      background:url('BLOOM_Bar_Icon.png') center center no-repeat;
+      background-size:220px 220px;
+      opacity:0.25;
+      pointer-events:none;
+    }
     .daynum{font-weight:600;font-size:.8rem;color:var(--muted);margin-bottom:2px}
     .amounts{margin-top:auto;display:flex;flex-direction:column;gap:4px;font-variant-numeric:tabular-nums}
     .meta{color:#111827;font-weight:500;font-size:.85rem}
@@ -75,7 +85,10 @@
       <button id="today" class="btn">Today</button>
       <button id="next" class="btn">Next →</button>
     </div>
-    <div class="month-label" id="monthLabel">Loading…</div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <img src="BLOOM_Bar_Icon.png" alt="Bloom Bar" style="width: 48px;height:48px;border-radius:999px;object-fit:cover"/>
+      <div class="month-label" id="monthLabel">Loading…</div>
+    </div>
   </div>
 
   <div class="grid" id="weekdayRow"></div>
@@ -276,6 +289,9 @@
           <input class="counted-input" type="number" step="0.01" placeholder="Counted cash" value="${counted!=null?counted:''}" data-date="${key}">
           <div class="var-line ${vClass}">${varianceText?`Variance: ${varianceText}`:''}</div>
         </div>`;
+      if(counted!=null){
+        c.classList.add('stamped');
+      }
       grid.appendChild(c);
       dayIndexInWeek++;
     };
@@ -356,6 +372,13 @@
           }else{
             varLine.textContent='';
           }
+        }
+
+        // toggle stamped state based on whether there is a counted value
+        if(val!=null){
+          parentCell.classList.add('stamped');
+        }else{
+          parentCell.classList.remove('stamped');
         }
       });
     });
