@@ -205,34 +205,34 @@
             <div class="stat-note" id="statCurrentMonthLabel">–</div>
           </div>
           <div class="stat">
-            <div class="stat-label">Current Month Clients</div>
-            <div class="stat-value" id="statCurrentClients">–</div>
-            <div class="stat-note">Unique clients seen this month</div>
-          </div>
-          <div class="stat">
-            <div class="stat-label">Clients — High & Low</div>
-            <div class="stat-value" id="statClientsHighLow">–</div>
-            <div class="stat-note" id="statClientsHighLowLabel">–</div>
-          </div>
-          <div class="stat">
-            <div class="stat-label">Last Month Clients vs 2024</div>
-            <div class="stat-value" id="statLastMonthClientsCompare">–</div>
-            <div class="stat-note" id="statLastMonthClientsCompareLabel">–</div>
-          </div>
-          <div class="stat">
             <div class="stat-label">Best & Slowest Months</div>
             <div class="stat-value" id="statBestWorst">–</div>
             <div class="stat-note" id="statBestWorstLabel">–</div>
           </div>
           <div class="stat">
-            <div class="stat-label">Last Month vs 2024</div>
-            <div class="stat-value" id="statLastMonthCompare">–</div>
-            <div class="stat-note" id="statLastMonthCompareLabel">–</div>
+            <div class="stat-label">Current Month Clients</div>
+            <div class="stat-value" id="statCurrentClients">–</div>
+            <div class="stat-note">Unique clients seen this month</div>
           </div>
           <div class="stat">
             <div class="stat-label">Current Month vs 2024</div>
             <div class="stat-value" id="statCurrentMonthCompare">–</div>
             <div class="stat-note" id="statCurrentMonthCompareLabel">–</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Last Month Sales: 2024 vs 2025</div>
+            <div class="stat-value" id="statLastMonthCompare">–</div>
+            <div class="stat-note" id="statLastMonthCompareLabel">–</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Last Month Clients: 2024 vs 2025</div>
+            <div class="stat-value" id="statLastMonthClientsCompare">–</div>
+            <div class="stat-note" id="statLastMonthClientsCompareLabel">–</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Clients — High & Low</div>
+            <div class="stat-value" id="statClientsHighLow">–</div>
+            <div class="stat-note" id="statClientsHighLowLabel">–</div>
           </div>
         </div>
       </section>
@@ -347,7 +347,10 @@
       const ctx=document.getElementById('salesChart').getContext('2d');
       if(chart)chart.destroy();
 
-      const ds2025=dataByYear[2025]?.sales||new Array(12).fill(0);
+      const raw2025=dataByYear[2025]?.sales||new Array(12).fill(0);
+      const now=new Date();
+      const cutoff=(now.getFullYear()===2025)?now.getMonth()+1:12; // months 0..cutoff-1
+      const ds2025=raw2025.map((v,idx)=>idx<cutoff?v:null);
       const ds2024=dataByYear[2024]?.sales||new Array(12).fill(0);
       const ds2023=dataByYear[2023]?.sales||new Array(12).fill(0);
 
@@ -464,8 +467,8 @@
       const highLowValueEl=document.getElementById('statClientsHighLow');
       const highLowLabelEl=document.getElementById('statClientsHighLowLabel');
       if(maxClientsVal>0){
-        highLowValueEl.textContent=`${intFmt.format(maxClientsVal)} / ${intFmt.format(minClientsVal)}`;
-        highLowLabelEl.textContent=`High: ${MONTH_NAMES[maxClientsIdx]} • Low: ${MONTH_NAMES[minClientsIdx]} 2025`;
+        highLowValueEl.textContent=`${intFmt.format(minClientsVal)} → ${intFmt.format(maxClientsVal)}`;
+        highLowLabelEl.textContent=`Low: ${MONTH_NAMES[minClientsIdx]} • High: ${MONTH_NAMES[maxClientsIdx]} 2025`;
       }else{
         highLowValueEl.textContent='–';
         highLowLabelEl.textContent='No client data yet';
@@ -489,14 +492,26 @@
         lastMonthClientsLabelEl.textContent='No client data for last month yet';
       }
 
-      const maxSalesVal=Math.max(...monthlySales);
-      const minSalesVal=Math.min(...monthlySales);
-      const maxSalesIdx=monthlySales.indexOf(maxSalesVal);
-      const minSalesIdx=monthlySales.indexOf(minSalesVal);
-      const bestLabel=maxSalesVal>0?`${MONTH_NAMES[maxSalesIdx]} — ${currencyFmt.format(maxSalesVal)}`:'No sales yet';
-      const worstLabel=minSalesVal>0?`${MONTH_NAMES[minSalesIdx]} — ${currencyFmt.format(minSalesVal)}`:'No sales yet';
-      document.getElementById('statBestWorst').textContent=maxSalesVal>0?currencyFmt.format(maxSalesVal):'–';
-      document.getElementById('statBestWorstLabel').textContent=`Best: ${bestLabel} • Slowest: ${worstLabel}`;
+      const nonZeroSales=monthlySales
+        .map((v,idx)=>({v,idx}))
+        .filter(x=>x.v>0);
+      const bestWorstValueEl=document.getElementById('statBestWorst');
+      const bestWorstLabelEl=document.getElementById('statBestWorstLabel');
+      if(nonZeroSales.length===0){
+        bestWorstValueEl.textContent='–';
+        bestWorstLabelEl.textContent='No sales yet';
+      }else{
+        let max=nonZeroSales[0];
+        let min=nonZeroSales[0];
+        for(const x of nonZeroSales){
+          if(x.v>max.v)max=x;
+          if(x.v<min.v)min=x;
+        }
+        const bestLabel=`${MONTH_NAMES[max.idx]} — ${currencyFmt.format(max.v)}`;
+        const worstLabel=`${MONTH_NAMES[min.idx]} — ${currencyFmt.format(min.v)}`;
+        bestWorstValueEl.textContent=currencyFmt.format(max.v);
+        bestWorstLabelEl.textContent=`Best: ${bestLabel} • Slowest: ${worstLabel}`;
+      }
     }
 
     async function loadEvents(){
