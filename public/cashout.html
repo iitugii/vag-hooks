@@ -38,6 +38,7 @@
     .link{color:#e5e7eb;background:#020617;padding:6px 10px;border-radius:999px;text-decoration:none;border:1px solid #1e293b;font-size:.8rem;display:inline-flex;align-items:center;gap:4px}
     .link:hover{color:#f9fafb;border-color:#334155}
     .wrap{max-width:1100px;margin:12px auto 24px;padding:0 16px 32px}
+    .calendar-wrapper{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
     .nav{display:flex;justify-content:space-between;align-items:center;gap:16px;margin:2px 0 8px}
     .nav-left,.nav-right{display:flex;align-items:center;gap:8px}
     .nav-header-logo{
@@ -50,7 +51,7 @@
       background-size:cover;
     }
     .month-label{font-size:1.1rem;font-weight:600;color:#0f172a}
-    .grid{display:grid;grid-template-columns:repeat(8,1fr);border:1px solid var(--line);background:var(--card);border-radius:18px;overflow:hidden;box-shadow:0 18px 40px rgba(15,23,42,0.16)}
+    .grid{display:grid;grid-template-columns:repeat(8,1fr);border:1px solid var(--line);background:var(--card);border-radius:18px;overflow:hidden;box-shadow:0 18px 40px rgba(15,23,42,0.16);min-width:720px}
     .weekday{background:#e5e7eb;color:#374151;padding:10px;font-weight:600;text-align:center;border-right:1px solid #e5e7eb;text-transform:uppercase;letter-spacing:.08em;font-size:.7rem}
     .weekday:last-child{border-right:0}
     .cell{background:var(--card-soft);min-height:120px;padding:10px;display:flex;flex-direction:column;border-right:1px solid var(--line);border-top:1px solid var(--line);transition:background-color .12s ease,box-shadow .12s ease,transform .12s ease}
@@ -82,6 +83,18 @@
     .week-total{background:#f3f4ff;font-size:.8rem;padding:10px 10px 8px;display:flex;flex-direction:column;justify-content:flex-start;font-variant-numeric:tabular-nums;border-left:2px solid #4f46e5;font-weight:500}
     .week-total strong{font-weight:700;margin-bottom:6px;color:#111827;letter-spacing:.08em;text-transform:uppercase;font-size:.72rem}
     .week-total span{margin-bottom:2px;font-weight:500;color:#111827}
+
+    /* Small screens (e.g., iPhone portrait) */
+    @media (max-width: 768px){
+      header{padding:4px 12px}
+      .wrap{max-width:none;padding:0 8px 24px}
+      .nav{gap:8px}
+      .nav-header-logo{width:150px;height:72px}
+      .month-label{font-size:1rem}
+      .cell{min-height:100px;padding:8px}
+      .weekday{padding:8px;font-size:.65rem}
+      .week-total{font-size:.75rem}
+    }
   </style>
 </head>
 <body>
@@ -110,8 +123,10 @@
     </div>
   </div>
 
-  <div class="grid" id="weekdayRow"></div>
-  <div class="grid" id="calendarGrid"></div>
+  <div class="calendar-wrapper">
+    <div class="grid" id="weekdayRow"></div>
+    <div class="grid" id="calendarGrid"></div>
+  </div>
 
   <p class="subtle">Blue shows <strong>total sold</strong> (cash + card minus change due); green shows <strong>cash collected</strong> (<code>cashAmount − amountDue</code>) per day.</p>
 </div>
