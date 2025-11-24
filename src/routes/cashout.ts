@@ -1,11 +1,9 @@
 import { Router, Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../lib/prisma";
 import path from "path";
 
 // Expose `/cashout` routes via an isolated router instance.
 const router = Router();
-// Local Prisma client keeps the handler self-contained; consider reusing the shared client if needed.
-const prisma = new PrismaClient();
 
 // GET /cashout -> serve the calendar UI from /public.
 router.get("/", (_req: Request, res: Response) => {
@@ -212,10 +210,72 @@ router.get("/data", async (req: Request, res: Response) => {
       serviceCount: Number(r.service_count || 0)
     }));
 
-    res.json({ year, month, data });
+    // Fetch any counted cash overrides for this month range
+    const startDate = new Date(`${year}-${monthStr}-01T00:00:00.000Z`);
+    const nextMonth = month === 12 ? 1 : month + 1;
+    const nextYear = month === 12 ? year + 1 : year;
+    const endDate = new Date(`${nextYear}-${String(nextMonth).padStart(2, "0")}-01T00:00:00.000Z`);
+
+    const countedRows = await prisma.cashoutCounted.findMany({
+      where: {
+        day: {
+          gte: startDate,
+          lt: endDate,
+        },
+      },
+    });
+
+    const counted: Record<string, number> = {};
+    for (const r of countedRows) {
+      const key = r.day.toISOString().slice(0, 10);
+      counted[key] = Number(r.amount);
+    }
+
+    res.json({ year, month, data, counted });
   } catch (err) {
     console.error("Error fetching cashout data:", err);
     res.status(500).json({ error: "Failed to load cashout data" });
+  }
+});
+
+// Save or update counted cash for a specific day
+router.post("/count", async (req: Request, res: Response) => {
+  try {
+    const { day, amount } = req.body as { day?: string; amount?: number };
+    if (!day || typeof amount !== "number" || !Number.isFinite(amount)) {
+      return res.status(400).json({ error: "day (YYYY-MM-DD) and numeric amount are required" });
+    }
+
+    const dayOnly = new Date(`${day}T00:00:00.000Z`);
+
+    const record = await prisma.cashoutCounted.upsert({
+      where: { day: dayOnly },
+      update: { amount },
+      create: { day: dayOnly, amount },
+    });
+
+    res.json({ ok: true, record });
+  } catch (err) {
+    console.error("Error saving counted cash:", err);
+    res.status(500).json({ error: "Failed to save counted cash" });
+  }
+});
+
+// Clear counted cash for a specific day
+router.delete("/count", async (req: Request, res: Response) => {
+  try {
+    const day = (req.query.day as string) || (req.body && (req.body.day as string));
+    if (!day) {
+      return res.status(400).json({ error: "day (YYYY-MM-DD) is required" });
+    }
+
+    const dayOnly = new Date(`${day}T00:00:00.000Z`);
+    await prisma.cashoutCounted.deleteMany({ where: { day: dayOnly } });
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Error deleting counted cash:", err);
+    res.status(500).json({ error: "Failed to delete counted cash" });
   }
 });
 

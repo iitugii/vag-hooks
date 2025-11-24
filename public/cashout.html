@@ -160,21 +160,7 @@
   const currencyFmt=new Intl.NumberFormat(undefined,{style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:2});
   const integerFmt=new Intl.NumberFormat(undefined,{maximumFractionDigits:0});
   const WEEKDAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-
-  const COUNTED_KEY_PREFIX='CASHOUT_COUNTED_';
-
-  function getCountedCash(dateKey){
-    const v=localStorage.getItem(COUNTED_KEY_PREFIX+dateKey);
-    return v!=null&&v!==''?Number(v):null;
-  }
-
-  function setCountedCash(dateKey,value){
-    if(value==null||value===''){
-      localStorage.removeItem(COUNTED_KEY_PREFIX+dateKey);
-    }else{
-      localStorage.setItem(COUNTED_KEY_PREFIX+dateKey,String(value));
-    }
-  }
+  let serverCounted={};
 
   function formatVariance(delta){
     // ensure minus sign hugs the number, no extra spacing
@@ -211,7 +197,7 @@
     // main month
     const r=await fetch(`/cashout/data?year=${year}&month=${month}`,{headers});
     if(!r.ok) throw new Error(`HTTP ${r.status}`);
-    const {data}=await r.json();
+    const {data,counted}=await r.json();
     const map=Object.create(null);
     const addIntoMap=(rows)=>{
       for(const it of rows){
@@ -226,6 +212,8 @@
       }
     };
     addIntoMap(data||[]);
+
+    serverCounted=counted||{};
 
     // also pull the previous month so the last week of it can show
     const prevMonth=month===1?12:month-1;
@@ -297,7 +285,7 @@
       const hasMeta=(dayTotals.clientCount||dayTotals.serviceCount);
       const metaLabel=hasMeta?`Clients: ${integerFmt.format(dayTotals.clientCount||0)}, Services: ${integerFmt.format(dayTotals.serviceCount||0)}`:'';
 
-      const counted=getCountedCash(key);
+      const counted=serverCounted[key]!=null?serverCounted[key]:null;
       const delta=(counted!=null?counted:0)-(dayTotals.cashTotal||0);
       const hasVariance=counted!=null&&(dayTotals.cashTotal||0);
       const varianceText=hasVariance?formatVariance(delta):'';
@@ -327,6 +315,10 @@
           <div class="sold">${soldLabel}</div>
           <div class="amt">${cashLabel}</div>
           <input class="counted-input" type="number" step="0.01" placeholder="Counted cash" value="${counted!=null?counted:''}" data-date="${key}">
+          <div class="count-actions">
+            <button type="button" class="count-save" data-date="${key}">Save</button>
+            <button type="button" class="count-clear" data-date="${key}">✕</button>
+          </div>
           <div class="var-line ${vClass}">${varianceText?`Variance: ${varianceText}`:''}</div>
         </div>`;
       if(counted!=null){
@@ -385,21 +377,17 @@
       appendWeekTotalCell();
     }
 
-    // wire input handlers (update in-place to avoid re-render jumpiness)
+    // live variance and stamp update on input, without saving
     grid.querySelectorAll('.counted-input').forEach(input=>{
       input.addEventListener('input',e=>{
         const el=e.target;
-        const dateKey=el.getAttribute('data-date');
         const raw=el.value.trim();
         const val=raw===''?null:Number(raw);
-        setCountedCash(dateKey,val);
 
-        // recompute variance for this cell only
         const parentCell=el.closest('.cell');
         if(!parentCell)return;
         const dateKeyAttr=el.getAttribute('data-date');
-        const totalsKey=dateKeyAttr;
-        const cash=(totals[totalsKey]?.cashTotal)||0;
+        const cash=(totals[dateKeyAttr]?.cashTotal)||0;
         const countedVal=val!=null?val:0;
         const hasVarianceLocal=val!=null&&cash;
         const deltaLocal=hasVarianceLocal?(countedVal-cash):0;
@@ -414,7 +402,6 @@
           }
         }
 
-        // toggle stamped state based on whether there is a counted value
         if(val!=null){
           parentCell.classList.add('stamped');
         }else{
@@ -423,6 +410,62 @@
       });
     });
   }
+
+  // handle save / clear actions for counted cash (DB-backed)
+  grid.addEventListener('click',async e=>{
+    const target=e.target;
+    if(target && target.classList && target.classList.contains('count-save')){
+      const day=target.getAttribute('data-date');
+      if(!day)return;
+      const input=grid.querySelector(`.counted-input[data-date="${day}"]`);
+      if(!input)return;
+      const raw=input.value.trim();
+      if(raw==='')return;
+      const amount=Number(raw);
+      if(!Number.isFinite(amount))return;
+
+      const headers={ 'Content-Type':'application/json' };
+      const t=getToken(); if(t) headers['x-auth-token']=t;
+
+      const resp=await fetch('/cashout/count',{
+        method:'POST',
+        headers,
+        body:JSON.stringify({day,amount}),
+      });
+      if(resp.ok){
+        serverCounted[day]=amount;
+      }
+    }
+
+    if(target && target.classList && target.classList.contains('count-clear')){
+      const day=target.getAttribute('data-date');
+      if(!day)return;
+
+      const headers={};
+      const t=getToken(); if(t) headers['x-auth-token']=t;
+
+      const resp=await fetch(`/cashout/count?day=${encodeURIComponent(day)}`,{
+        method:'DELETE',
+        headers,
+      });
+      if(resp.ok){
+        serverCounted[day]=null;
+        const input=grid.querySelector(`.counted-input[data-date="${day}"]`);
+        if(input){
+          input.value='';
+        }
+        const cell=input && input.closest ? input.closest('.cell') : null;
+        if(cell){
+          cell.classList.remove('stamped');
+          const varLine=cell.querySelector('.var-line');
+          if(varLine){
+            varLine.textContent='';
+            varLine.classList.remove('var-zero','var-under','var-over');
+          }
+        }
+      }
+    }
+  });
 
   let Y=(new Date()).getFullYear(), M=(new Date()).getMonth()+1;
   document.getElementById('prev').onclick=()=>{ M--; if(M<1){M=12; Y--} renderCalendar(Y,M) }
