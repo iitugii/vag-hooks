@@ -77,12 +77,26 @@
     .counted-input{margin-top:6px;width:100%;font-size:.78rem;padding:4px 6px;border-radius:999px;border:1px solid #d1d5db;background:#f9fafb;color:#111827}
     .counted-input:focus{outline:none;border-color:#4f46e5;box-shadow:0 0 0 1px rgba(79,70,229,.5);background:#fff}
     .var-line{margin-top:3px;font-size:.8rem;font-variant-numeric:tabular-nums;}
-    .var-zero{color:var(--success);font-weight:600;}
-    .var-over{color:#b91c1c;font-weight:600;}
-    .var-under{color:var(--success);font-weight:600;}
+    .var-zero{color:var(--success) !important;font-weight:600;}
+    .var-over{color:#b91c1c !important;font-weight:600;}
+    .var-under{color:var(--success) !important;font-weight:600;}
     .week-total{background:#f3f4ff;font-size:.8rem;padding:10px 10px 8px;display:flex;flex-direction:column;justify-content:flex-start;font-variant-numeric:tabular-nums;border-left:2px solid #4f46e5;font-weight:500}
     .week-total strong{font-weight:700;margin-bottom:6px;color:#111827;letter-spacing:.08em;text-transform:uppercase;font-size:.72rem}
     .week-total span{margin-bottom:2px;font-weight:500;color:#111827}
+
+    .count-actions{margin-top:4px;display:flex;gap:4px}
+    .count-actions .count-save,
+    .count-actions .count-clear{
+      border:0;
+      border-radius:999px;
+      padding:2px 6px;
+      font-size:.7rem;
+      cursor:pointer;
+      background:#e5e7eb;
+      color:#111827;
+    }
+    .count-actions .count-clear{background:#fee2e2;color:#b91c1c}
+    .count-actions .count-save.saved{background:#bbf7d0;color:#14532d}
 
     /* Small screens (e.g., iPhone portrait) */
     @media (max-width: 768px){
@@ -157,7 +171,7 @@
   const weekdayRow=document.getElementById('weekdayRow');
   const grid=document.getElementById('calendarGrid');
   const monthLabel=document.getElementById('monthLabel');
-  const currencyFmt=new Intl.NumberFormat(undefined,{style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:2});
+  const currencyFmt=new Intl.NumberFormat(undefined,{style:'currency',currency:'USD',minimumFractionDigits:0,maximumFractionDigits:0});
   const integerFmt=new Intl.NumberFormat(undefined,{maximumFractionDigits:0});
   const WEEKDAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   let serverCounted={};
@@ -213,6 +227,7 @@
     };
     addIntoMap(data||[]);
 
+    // start with counted values for this main month
     serverCounted=counted||{};
 
     // also pull the previous month so the last week of it can show
@@ -221,8 +236,15 @@
     try{
       const rPrev=await fetch(`/cashout/data?year=${prevYear}&month=${prevMonth}`,{headers});
       if(rPrev.ok){
-        const {data:prevData}=await rPrev.json();
+        const {data:prevData,counted:prevCounted}=await rPrev.json();
         addIntoMap(prevData||[]);
+        // merge previous month's counted as well so its days render when in view
+        const prevMap=prevCounted||{};
+        for(const k in prevMap){
+          if(Object.prototype.hasOwnProperty.call(prevMap,k) && serverCounted[k]==null){
+            serverCounted[k]=prevMap[k];
+          }
+        }
       }
     }catch(e){
       console.warn('cashout/data previous month failed',e);
@@ -266,7 +288,7 @@
         <span>Clients: ${weekClientTotal>0?integerFmt.format(weekClientTotal):'-'}</span>
         <span>Cash Reported: ${reportedCashText||'-'}</span>
         <span>Counted: <span class="${weekHasAnyCounted?'':'var-over'}">${countedText}</span></span>
-        <span class="var-line ${vClass}">${vText?`Cash Var: ${vText}`:''}</span>`;
+        <span class="var-line">Cash Var: <span class="${vClass}">${vText||''}</span></span>`;
       grid.appendChild(weekCell);
       weekSalesTotal=0;
       weekClientTotal=0;
@@ -314,16 +336,14 @@
           ${metaLabel?`<div class="meta">${metaLabel}</div>`:''}
           <div class="sold">${soldLabel}</div>
           <div class="amt">${cashLabel}</div>
-          <input class="counted-input" type="number" step="0.01" placeholder="Counted cash" value="${counted!=null?counted:''}" data-date="${key}">
+          <input class="counted-input" type="number" step="1" placeholder="Counted cash" value="${counted!=null?Math.round(counted):''}" data-date="${key}">
           <div class="count-actions">
             <button type="button" class="count-save" data-date="${key}">Save</button>
             <button type="button" class="count-clear" data-date="${key}">✕</button>
           </div>
           <div class="var-line ${vClass}">${varianceText?`Variance: ${varianceText}`:''}</div>
         </div>`;
-      if(counted!=null){
-        c.classList.add('stamped');
-      }
+      // stamp only appears after a successful save, not just on value
       grid.appendChild(c);
       dayIndexInWeek++;
     };
@@ -402,11 +422,7 @@
           }
         }
 
-        if(val!=null){
-          parentCell.classList.add('stamped');
-        }else{
-          parentCell.classList.remove('stamped');
-        }
+        // do not toggle stamp on input alone; only on save/clear
       });
     });
   }
@@ -421,7 +437,7 @@
       if(!input)return;
       const raw=input.value.trim();
       if(raw==='')return;
-      const amount=Number(raw);
+      const amount=Math.round(Number(raw));
       if(!Number.isFinite(amount))return;
 
       const headers={ 'Content-Type':'application/json' };
@@ -434,6 +450,16 @@
       });
       if(resp.ok){
         serverCounted[day]=amount;
+        // show stamp only after a successful save
+        const cell=input.closest('.cell');
+        if(cell){
+          cell.classList.add('stamped');
+          const saveBtn=cell.querySelector('.count-save');
+          if(saveBtn){
+            saveBtn.classList.add('saved');
+            setTimeout(()=>saveBtn.classList.remove('saved'),800);
+          }
+        }
       }
     }
 
