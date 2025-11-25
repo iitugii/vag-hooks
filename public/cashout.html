@@ -177,18 +177,19 @@
   let serverCounted={};
 
   function formatVariance(delta){
-    // ensure minus sign hugs the number, no extra spacing
-    const sign=delta>0?'+':delta<0?'-':'';
-    return `${sign}${currencyFmt.format(Math.abs(delta))}`;
+    const rounded=Math.round(delta||0);
+    const sign=rounded>0?'+':rounded<0?'-':'';
+    return `${sign}${currencyFmt.format(Math.abs(rounded))}`;
   }
 
   function varianceClass(delta){
     if(!isFinite(delta))return'';
-    if(delta===0)return'var-zero';
-    // delta = counted - cash
+    const rounded=Math.round(delta||0);
+    if(rounded===0)return'var-zero';
+    // delta = counted - cash (rounded to whole dollars)
     // surplus (counted > cash) -> positive -> green
     // deficit (counted < cash) -> negative -> red
-    return delta>0?'var-under':'var-over';
+    return rounded>0?'var-under':'var-over';
   }
 
   function renderWeekdayHeader(){
