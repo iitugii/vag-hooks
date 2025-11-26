@@ -16,6 +16,7 @@ type WeeklySummaryRow = {
   total_tips: number | null;
   service_percentage: number | null;
   tip_fee_percentage: number | null;
+  special_deduction: number | null;
   transactions: unknown;
 };
 
@@ -26,10 +27,12 @@ type ProviderSummary = {
   tips: number;
   servicePercentage: number | null;
   tipFeePercentage: number | null;
+  specialDeduction: number;
   housePay: number;
   techPay: number;
   tipFeeAmount: number;
   techAssistantFee: number;
+  commissionComparison: CommissionComparison | null;
   transactions: ProviderTransaction[];
 };
 
@@ -38,6 +41,14 @@ type ProviderTransaction = {
   timestamp: string | null;
   sale: number;
   tip: number;
+};
+
+type CommissionComparison = {
+  actualPercent: number;
+  actualAmount: number;
+  baselinePercent: number;
+  baselineAmount: number;
+  deltaAmount: number;
 };
 
 type RawTransaction = {
@@ -128,10 +139,11 @@ router.get("/data", async (req: Request, res: Response) => {
       )
       SELECT
         d.provider_id,
-        SUM(d.sale_amount) AS total_sales,
+        SUM(GREATEST(d.sale_amount - d.tip_amount, 0)) AS total_sales,
         SUM(d.tip_amount) AS total_tips,
         MAX(pp."servicePercentage") AS service_percentage,
         MAX(pp."tipFeePercentage") AS tip_fee_percentage,
+        MAX(pp."specialDeduction") AS special_deduction,
         COALESCE(
           json_agg(
             json_build_object(
@@ -183,6 +195,11 @@ router.get("/data", async (req: Request, res: Response) => {
           ? null
           : Number(row.tip_fee_percentage);
 
+      const specialDeductionRaw =
+        row.special_deduction === null || row.special_deduction === undefined
+          ? 0
+          : Number(row.special_deduction);
+
       const techServiceRaw =
         servicePercentage === null ? 0 : totalSales * (servicePercentage / 100);
       const houseServiceRaw = totalSales - techServiceRaw;
@@ -191,15 +208,32 @@ router.get("/data", async (req: Request, res: Response) => {
       const tipFeeRaw = tips * (tipFeePct / 100);
       const techTipRaw = tips - tipFeeRaw;
 
-      const assistantEligibleCount = transactions.filter(tx => tx.sale >= 1).length;
+      const assistantEligibleCount = transactions.filter(tx => Math.max(tx.sale - tx.tip, 0) >= 1).length;
       const assistantRate =
         servicePercentage === null ? 0 : servicePercentage >= 50 ? 2 : 1;
       const techAssistantFeeRaw = assistantEligibleCount * assistantRate;
 
-      const housePay = roundCurrency(houseServiceRaw + tipFeeRaw + techAssistantFeeRaw);
-      const techPay = roundCurrency(Math.max(techServiceRaw + techTipRaw - techAssistantFeeRaw, 0));
+      const housePay = roundCurrency(
+        houseServiceRaw + tipFeeRaw + techAssistantFeeRaw + specialDeductionRaw
+      );
+      const techPay = roundCurrency(
+        Math.max(techServiceRaw + techTipRaw - techAssistantFeeRaw - specialDeductionRaw, 0)
+      );
       const techAssistantFee = roundCurrency(techAssistantFeeRaw);
       const tipFeeAmount = roundCurrency(tipFeeRaw);
+      const specialDeduction = roundCurrency(specialDeductionRaw);
+
+      const commissionComparison:
+        | CommissionComparison
+        | null = servicePercentage !== null && servicePercentage < 50
+        ? {
+            actualPercent: roundPercentage(servicePercentage),
+            actualAmount: roundCurrency(techServiceRaw),
+            baselinePercent: 50,
+            baselineAmount: roundCurrency(totalSales * 0.5),
+            deltaAmount: roundCurrency(totalSales * 0.5 - techServiceRaw),
+          }
+        : null;
 
       return {
         providerId,
@@ -208,10 +242,12 @@ router.get("/data", async (req: Request, res: Response) => {
         tips,
         servicePercentage,
         tipFeePercentage,
+        specialDeduction,
         housePay,
         techPay,
         tipFeeAmount,
         techAssistantFee,
+        commissionComparison,
         transactions,
       };
     });
@@ -224,9 +260,18 @@ router.get("/data", async (req: Request, res: Response) => {
         acc.techPay += row.techPay;
         acc.tipFee += row.tipFeeAmount;
         acc.techAssistantFee += row.techAssistantFee;
+        acc.specialDeduction += row.specialDeduction;
         return acc;
       },
-      { totalSales: 0, tips: 0, housePay: 0, techPay: 0, tipFee: 0, techAssistantFee: 0 }
+      {
+        totalSales: 0,
+        tips: 0,
+        housePay: 0,
+        techPay: 0,
+        tipFee: 0,
+        techAssistantFee: 0,
+        specialDeduction: 0,
+      }
     );
 
     const totalsRounded = {
@@ -236,6 +281,10 @@ router.get("/data", async (req: Request, res: Response) => {
       techPay: roundCurrency(totals.techPay),
       tipFee: roundCurrency(totals.tipFee),
       techAssistantFee: roundCurrency(totals.techAssistantFee),
+      specialDeduction: roundCurrency(totals.specialDeduction),
+      commissionDiff: roundCurrency(
+        providers.reduce((sum, row) => sum + (row.commissionComparison?.deltaAmount || 0), 0)
+      ),
     };
 
     res.json({
@@ -247,12 +296,14 @@ router.get("/data", async (req: Request, res: Response) => {
         providerName: row.providerName,
         servicePercentage: row.servicePercentage,
         tipFeePercentage: row.tipFeePercentage,
+        specialDeduction: row.specialDeduction,
         totalSales: row.totalSales,
         tips: row.tips,
         housePay: row.housePay,
         techPay: row.techPay,
         tipFeeAmount: row.tipFeeAmount,
         techAssistantFee: row.techAssistantFee,
+        commissionComparison: row.commissionComparison,
         transactions: row.transactions,
       })),
     });
@@ -276,9 +327,10 @@ router.post("/percentage", async (req: Request, res: Response) => {
     const hasTipField =
       Object.prototype.hasOwnProperty.call(body, "tipFeePercentage") ||
       Object.prototype.hasOwnProperty.call(body, "tipFee");
+    const hasDeductionField = Object.prototype.hasOwnProperty.call(body, "specialDeduction");
 
-    if (!hasServiceField && !hasTipField) {
-      return res.status(400).json({ error: "No percentage values provided" });
+    if (!hasServiceField && !hasTipField && !hasDeductionField) {
+      return res.status(400).json({ error: "No configuration values provided" });
     }
 
     let serviceValue: number | null | undefined = undefined;
@@ -303,19 +355,38 @@ router.post("/percentage", async (req: Request, res: Response) => {
       }
     }
 
+    let specialDeductionValue: number | null | undefined = undefined;
+    if (hasDeductionField) {
+      try {
+        specialDeductionValue = parseCurrency(body.specialDeduction);
+      } catch (parseErr: any) {
+        return res
+          .status(400)
+          .json({ error: parseErr?.message || "Invalid special deduction amount" });
+      }
+    }
+
     const existing = await prisma.providerPercentage.findUnique({ where: { providerId } });
 
     const effectiveService =
       hasServiceField ? serviceValue ?? null : existing?.servicePercentage ?? null;
     const effectiveTipFee = hasTipField ? tipFeeValue ?? null : existing?.tipFeePercentage ?? null;
+    const effectiveSpecialDeduction = hasDeductionField
+      ? specialDeductionValue ?? null
+      : existing?.specialDeduction ?? null;
 
-    if (effectiveService === null && effectiveTipFee === null) {
+    if (effectiveService === null && effectiveTipFee === null && effectiveSpecialDeduction === null) {
       if (existing) {
         await prisma.providerPercentage
           .delete({ where: { providerId } })
           .catch(() => undefined);
       }
-      return res.json({ providerId, servicePercentage: null, tipFeePercentage: null });
+      return res.json({
+        providerId,
+        servicePercentage: null,
+        tipFeePercentage: null,
+        specialDeduction: null,
+      });
     }
 
     const record = await prisma.providerPercentage.upsert({
@@ -323,11 +394,13 @@ router.post("/percentage", async (req: Request, res: Response) => {
       update: {
         ...(hasServiceField ? { servicePercentage: serviceValue ?? null } : {}),
         ...(hasTipField ? { tipFeePercentage: tipFeeValue ?? null } : {}),
+        ...(hasDeductionField ? { specialDeduction: specialDeductionValue ?? null } : {}),
       },
       create: {
         providerId,
         servicePercentage: effectiveService,
         tipFeePercentage: effectiveTipFee,
+        specialDeduction: effectiveSpecialDeduction,
       },
     });
 
@@ -335,6 +408,7 @@ router.post("/percentage", async (req: Request, res: Response) => {
       providerId: record.providerId,
       servicePercentage: record.servicePercentage,
       tipFeePercentage: record.tipFeePercentage,
+      specialDeduction: record.specialDeduction,
     });
   } catch (err: any) {
     console.error("/paysheet/percentage failed", err);
@@ -382,6 +456,10 @@ function roundCurrency(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
+function roundPercentage(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
 function parsePercentage(value: unknown): number | null {
   if (value === null || value === undefined || value === "") {
     return null;
@@ -397,6 +475,36 @@ function parsePercentage(value: unknown): number | null {
   }
 
   return Math.round(numeric * 100) / 100;
+}
+
+function parseCurrency(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      throw new Error("Amount must be a finite number");
+    }
+    return roundCurrency(value);
+  }
+
+  if (typeof value === "string") {
+    const cleaned = value.replace(/[$,\s]/g, "");
+    if (!cleaned) {
+      return null;
+    }
+    const numeric = Number(cleaned);
+    if (!Number.isFinite(numeric)) {
+      throw new Error("Amount must be a number");
+    }
+    if (numeric < 0) {
+      throw new Error("Amount must be zero or positive");
+    }
+    return roundCurrency(numeric);
+  }
+
+  throw new Error("Amount must be a number or string");
 }
 
 export default router;

@@ -19,14 +19,15 @@
     .totals span{color:var(--accent);}
     .provider-cell{display:flex;flex-direction:column;gap:2px;}
     .provider-name{font-weight:600;}
+    .provider-name.tip-highlight{text-decoration:underline dotted;color:var(--accent);cursor:help;}
     .provider-id{font-size:.75rem;color:var(--muted);word-break:break-all;}
     .cell-sub{font-size:.75rem;color:var(--muted);}
     table{width:100%;border-collapse:collapse;margin-top:12px;font-size:.95rem;}
     th,td{padding:10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle;}
     tbody tr:hover{background:#f1f5ff;}
-    .percentage-wrapper{display:flex;align-items:center;gap:8px;max-width:120px;}
-    .percentage-wrapper input{min-width:0;width:80px;padding:6px 8px;}
-    .percentage-wrapper span{color:var(--muted);font-size:.9rem;}
+    .config-input{display:flex;align-items:center;gap:8px;max-width:140px;}
+    .config-input input{min-width:0;width:90px;padding:6px 8px;}
+    .config-input .affix{color:var(--muted);font-size:.9rem;}
     .toggle-btn{padding:6px 10px;border:1px solid var(--accent);border-radius:8px;background:#fff;color:var(--accent);font-weight:600;cursor:pointer;font-size:.85rem;}
     .toggle-btn[aria-expanded="true"]{background:var(--accent);color:#fff;}
     .toggle-btn:disabled{opacity:.5;border-color:var(--line);color:var(--muted);cursor:not-allowed;background:#fff;}
@@ -56,11 +57,13 @@
 
   <div class="card">
     <div class="totals">
-      <div>Total Sales: <span id="totalSales">$0.00</span></div>
+      <div>Service Total: <span id="totalSales">$0.00</span></div>
       <div>Tips: <span id="totalTips">$0.00</span></div>
       <div>Tip Fee: <span id="totalTipFee">$0.00</span></div>
-      <div>Tech Assist Fee: <span id="totalAssistFee">$0.00</span></div>
+      <div>Special Deductions: <span id="totalSpecialDeduction">$0.00</span></div>
       <div>House Pay: <span id="totalHousePay">$0.00</span></div>
+      <div>Commission Δ (45%): <span id="totalCommissionDiff">$0.00</span></div>
+      <div>Tech Assist Fee: <span id="totalAssistFee">$0.00</span></div>
       <div>Tech Pay: <span id="totalTechPay">$0.00</span></div>
     </div>
   </div>
@@ -71,16 +74,17 @@
         <tr>
           <th>Service Provider</th>
           <th>Service %</th>
-          <th>Total Sales</th>
+          <th>Service Total</th>
           <th>Tips</th>
           <th>House Pay</th>
           <th>Tip Fee %</th>
+          <th>Special Deduction</th>
           <th>Tech Pay</th>
           <th>Transactions</th>
         </tr>
       </thead>
       <tbody id="tableBody">
-        <tr><td colspan="8">No data yet.</td></tr>
+        <tr><td colspan="9">No data yet.</td></tr>
       </tbody>
     </table>
   </div>
@@ -95,7 +99,9 @@
   const totalSalesEl = document.getElementById('totalSales');
   const totalTipsEl = document.getElementById('totalTips');
   const totalTipFeeEl = document.getElementById('totalTipFee');
+  const totalSpecialDeductionEl = document.getElementById('totalSpecialDeduction');
   const totalAssistFeeEl = document.getElementById('totalAssistFee');
+  const totalCommissionDiffEl = document.getElementById('totalCommissionDiff');
   const totalHousePayEl = document.getElementById('totalHousePay');
   const totalTechPayEl = document.getElementById('totalTechPay');
   const tableBody = document.getElementById('tableBody');
@@ -157,13 +163,15 @@
     totalSalesEl.textContent = currencyFmt.format(data.totals.totalSales || 0);
     totalTipsEl.textContent = currencyFmt.format(data.totals.tips || 0);
     totalTipFeeEl.textContent = currencyFmt.format(data.totals.tipFee || 0);
+    totalSpecialDeductionEl.textContent = currencyFmt.format(data.totals.specialDeduction || 0);
     totalAssistFeeEl.textContent = currencyFmt.format(data.totals.techAssistantFee || 0);
+    totalCommissionDiffEl.textContent = currencyFmt.format(data.totals.commissionDiff || 0);
     totalHousePayEl.textContent = currencyFmt.format(data.totals.housePay || 0);
     totalTechPayEl.textContent = currencyFmt.format(data.totals.techPay || 0);
 
     tableBody.innerHTML = '';
     if(!data.providers || !data.providers.length){
-      tableBody.innerHTML = '<tr><td colspan="8">No providers found for this week.</td></tr>';
+      tableBody.innerHTML = '<tr><td colspan="9">No providers found for this week.</td></tr>';
       return;
     }
 
@@ -178,6 +186,11 @@
       const providerName = document.createElement('span');
       providerName.className = 'provider-name';
       providerName.textContent = row.providerName || row.providerId;
+      if(row.servicePercentage !== null && row.servicePercentage < 50 && row.commissionComparison){
+        providerName.classList.add('tip-highlight');
+        const comp = row.commissionComparison;
+        providerName.title = `Commission 5% Difference: ${currencyFmt.format(comp.deltaAmount)} | @${comp.actualPercent}% ${currencyFmt.format(comp.actualAmount)} | @${comp.baselinePercent}% ${currencyFmt.format(comp.baselineAmount)}`;
+      }
       const providerId = document.createElement('span');
       providerId.className = 'provider-id';
       providerId.textContent = row.providerName ? row.providerId : '';
@@ -219,6 +232,12 @@
         sub.textContent = `Includes tech assistants fee ${currencyFmt.format(row.techAssistantFee)}`;
         housePayCell.appendChild(sub);
       }
+      if(row.specialDeduction){
+        const sub = document.createElement('div');
+        sub.className = 'cell-sub';
+        sub.textContent = `Includes special deduction ${currencyFmt.format(row.specialDeduction)}`;
+        housePayCell.appendChild(sub);
+      }
       summaryRow.appendChild(housePayCell);
 
       const tipFeeCell = document.createElement('td');
@@ -231,12 +250,28 @@
       }));
       summaryRow.appendChild(tipFeeCell);
 
+      const deductionCell = document.createElement('td');
+      deductionCell.appendChild(createCurrencyInput({
+        initialValue: row.specialDeduction,
+        providerId: row.providerId,
+        key: 'specialDeduction',
+        label: 'Special Deduction',
+        token
+      }));
+      summaryRow.appendChild(deductionCell);
+
       const techPayCell = document.createElement('td');
       techPayCell.textContent = currencyFmt.format(row.techPay || 0);
       if(row.techAssistantFee){
         const sub = document.createElement('div');
         sub.className = 'cell-sub';
         sub.textContent = `- Tech assistants fee ${currencyFmt.format(row.techAssistantFee)}`;
+        techPayCell.appendChild(sub);
+      }
+      if(row.specialDeduction){
+        const sub = document.createElement('div');
+        sub.className = 'cell-sub';
+        sub.textContent = `- Special deduction ${currencyFmt.format(row.specialDeduction)}`;
         techPayCell.appendChild(sub);
       }
       summaryRow.appendChild(techPayCell);
@@ -256,7 +291,7 @@
       const detailRow = document.createElement('tr');
       detailRow.className = 'detail-row hidden';
       const detailCell = document.createElement('td');
-      detailCell.colSpan = 8;
+      detailCell.colSpan = 9;
 
       if(!count){
         detailCell.textContent = 'No transactions for this provider within the selected week.';
@@ -267,7 +302,7 @@
         detailTable.className = 'transactions-table';
 
         const detailHead = document.createElement('thead');
-        detailHead.innerHTML = '<tr><th>Date & Time</th><th>Sale</th><th>Tip</th><th>Event ID</th></tr>';
+        detailHead.innerHTML = '<tr><th>Date & Time</th><th>Service</th><th>Tip</th><th>Event ID</th></tr>';
         detailTable.appendChild(detailHead);
 
         const detailBody = document.createElement('tbody');
@@ -278,7 +313,8 @@
           tr.appendChild(tsCell);
 
           const amountCell = document.createElement('td');
-          amountCell.textContent = currencyFmt.format(tx.sale || 0);
+          const serviceValue = Math.max((tx.sale || 0) - (tx.tip || 0), 0);
+          amountCell.textContent = currencyFmt.format(serviceValue);
           tr.appendChild(amountCell);
 
           const tipCell = document.createElement('td');
@@ -318,7 +354,8 @@
 
   async function handleConfigChange(input, providerId, token){
     const key = input.dataset.configKey;
-    const label = input.dataset.configLabel || 'Percentage';
+    const label = input.dataset.configLabel || 'Value';
+    const type = input.dataset.configType || 'percentage';
     const raw = (input.value || '').trim();
     const previous = input.dataset.applied || '';
 
@@ -331,12 +368,12 @@
 
     if(!key){
       errorEl.hidden = false;
-      errorEl.textContent = 'Unable to determine which percentage to update.';
+      errorEl.textContent = 'Unable to determine which value to update.';
       revertInput(input, previous);
       return;
     }
 
-    const normalized = normalizePercentage(raw);
+    const normalized = type === 'currency' ? normalizeCurrency(raw) : normalizePercentage(raw);
     if(normalized.error){
       errorEl.hidden = false;
       errorEl.textContent = normalized.error;
@@ -345,7 +382,11 @@
     }
 
     const payloadValue = normalized.value;
-    const nextApplied = payloadValue === null ? '' : String(payloadValue);
+    const nextApplied = payloadValue === null
+      ? ''
+      : type === 'currency'
+        ? payloadValue.toFixed(2)
+        : String(payloadValue);
     if(nextApplied === previous){
       return;
     }
@@ -407,6 +448,29 @@
     return { value: rounded };
   }
 
+  function normalizeCurrency(raw){
+    if(raw === ''){
+      return { value: null };
+    }
+
+    const cleaned = raw.replace(/[$,\s]/g, '');
+    if(cleaned === ''){
+      return { value: null };
+    }
+
+    const numeric = Number(cleaned);
+    if(!Number.isFinite(numeric)){
+      return { error: 'Amount must be a number.' };
+    }
+
+    if(numeric < 0){
+      return { error: 'Amount must be zero or positive.' };
+    }
+
+    const rounded = Math.round(numeric * 100) / 100;
+    return { value: rounded };
+  }
+
   function revertInput(input, previous){
     input.value = previous;
     input.dataset.applied = previous;
@@ -414,7 +478,7 @@
 
   function createPercentageInput({ initialValue, providerId, key, label, token }){
     const wrapper = document.createElement('div');
-    wrapper.className = 'percentage-wrapper';
+    wrapper.className = 'config-input';
     const input = document.createElement('input');
     input.type = 'number';
     input.min = '0';
@@ -428,11 +492,39 @@
     input.dataset.applied = valueString;
     input.dataset.configKey = key;
     input.dataset.configLabel = label;
+    input.dataset.configType = 'percentage';
     input.addEventListener('change', () => handleConfigChange(input, providerId, token));
     wrapper.appendChild(input);
     const suffix = document.createElement('span');
+    suffix.className = 'affix';
     suffix.textContent = '%';
     wrapper.appendChild(suffix);
+    return wrapper;
+  }
+
+  function createCurrencyInput({ initialValue, providerId, key, label, token }){
+    const wrapper = document.createElement('div');
+    wrapper.className = 'config-input';
+    const prefix = document.createElement('span');
+    prefix.className = 'affix';
+    prefix.textContent = '$';
+    wrapper.appendChild(prefix);
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = '0';
+    input.step = '0.01';
+    input.placeholder = '0.00';
+    input.inputMode = 'decimal';
+    const hasValue = typeof initialValue === 'number' && !Number.isNaN(initialValue) && initialValue !== 0;
+    const valueString = hasValue ? initialValue.toFixed(2) : '';
+    input.value = valueString;
+    input.dataset.providerId = providerId;
+    input.dataset.applied = valueString;
+    input.dataset.configKey = key;
+    input.dataset.configLabel = label;
+    input.dataset.configType = 'currency';
+    input.addEventListener('change', () => handleConfigChange(input, providerId, token));
+    wrapper.appendChild(input);
     return wrapper;
   }
 

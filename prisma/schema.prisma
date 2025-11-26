@@ -34,6 +34,7 @@ model ProviderPercentage {
   providerId        String  @id
   servicePercentage Float?
   tipFeePercentage  Float?
+  specialDeduction  Float?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }
