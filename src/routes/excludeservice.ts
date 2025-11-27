@@ -3,6 +3,7 @@ export const excludedServices = [
 	"Childrens Manicure",
 	"Childrens Pedicure",
 	"Soak Off",
+    "Nail Replacement",
 ] as const;
 
 export const excludedServiceSet = new Set(

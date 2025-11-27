@@ -36,6 +36,8 @@
     .detail-container{padding:8px 0;}
     .transactions-table{width:100%;border-collapse:collapse;font-size:.9rem;background:#f9fafb;}
     .transactions-table th,.transactions-table td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;}
+    .transactions-table td.item-cell{display:flex;align-items:center;gap:8px;justify-content:space-between;min-height:30px;}
+    .transactions-table td.item-cell .tx-item-label{flex:1;min-width:0;}
     .transactions-table tbody tr:hover{background:#eef2ff;}
     .transactions-table tbody tr.excluded-transaction{background:#fff4f5;}
     .transactions-table tbody tr.excluded-transaction:hover{background:#ffe8eb;}
@@ -329,11 +331,15 @@
           tr.appendChild(tipCell);
 
           const itemCell = document.createElement('td');
+          itemCell.className = 'item-cell';
           const displayItem = (tx.itemSold && tx.itemSold.trim()) ? tx.itemSold : tx.eventId;
-          itemCell.textContent = displayItem || '—';
+          const itemLabel = document.createElement('span');
+          itemLabel.className = 'tx-item-label';
+          itemLabel.textContent = displayItem || '—';
           if(tx.eventId){
             itemCell.title = tx.eventId;
           }
+          itemCell.appendChild(itemLabel);
           if(excluded){
             const badge = document.createElement('div');
             badge.className = 'tx-badge';
