@@ -41,6 +41,7 @@ type ProviderTransaction = {
   timestamp: string | null;
   sale: number;
   tip: number;
+  itemSold: string | null;
 };
 
 type CommissionComparison = {
@@ -56,6 +57,7 @@ type RawTransaction = {
   timestamp?: string | null;
   sale?: number | null;
   tip?: number | null;
+  itemSold?: string | null;
 };
 
 router.get("/data", async (req: Request, res: Response) => {
@@ -94,6 +96,12 @@ router.get("/data", async (req: Request, res: Response) => {
             (payload->'payload'->>'amount_due')::numeric
           )::double precision AS amount_due_raw,
           COALESCE(
+            NULLIF((payload->>'itemSold')::text, ''),
+            NULLIF((payload->'payload'->>'itemSold')::text, ''),
+            NULLIF((payload->>'serviceName')::text, ''),
+            NULLIF((payload->'payload'->>'serviceName')::text, '')
+          ) AS item_sold,
+          COALESCE(
             (payload->>'tip')::numeric,
             (payload->'payload'->>'tip')::numeric,
             (payload->>'tipAmount')::numeric,
@@ -124,7 +132,8 @@ router.get("/data", async (req: Request, res: Response) => {
             WHEN tender_total IS NOT NULL AND tender_total <> 0 THEN tender_total
             ELSE COALESCE(amount_due_raw, 0)
           END AS sale_amount,
-          tip_amount
+          tip_amount,
+          item_sold
         FROM normalized
       ),
       deduped AS (
@@ -133,7 +142,8 @@ router.get("/data", async (req: Request, res: Response) => {
           provider_id,
           ts_local,
           sale_amount,
-          tip_amount
+          tip_amount,
+          item_sold
         FROM normalized_final
         ORDER BY event_id, ts_local DESC
       )
@@ -150,7 +160,8 @@ router.get("/data", async (req: Request, res: Response) => {
               'eventId', d.event_id,
               'timestamp', d.ts_local,
               'sale', d.sale_amount,
-              'tip', d.tip_amount
+              'tip', d.tip_amount,
+              'itemSold', d.item_sold
             )
             ORDER BY d.ts_local
           ),
@@ -181,6 +192,7 @@ router.get("/data", async (req: Request, res: Response) => {
             timestamp: typeof tx?.timestamp === "string" ? tx.timestamp : null,
             sale: Number(tx?.sale || 0),
             tip: Number(tx?.tip || 0),
+            itemSold: typeof tx?.itemSold === "string" && tx.itemSold.trim() ? tx.itemSold : null,
           };
         })
         .filter((tx): tx is ProviderTransaction => tx !== null);

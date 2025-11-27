@@ -302,7 +302,7 @@
         detailTable.className = 'transactions-table';
 
         const detailHead = document.createElement('thead');
-        detailHead.innerHTML = '<tr><th>Date & Time</th><th>Service</th><th>Tip</th><th>Event ID</th></tr>';
+        detailHead.innerHTML = '<tr><th>Date & Time</th><th>Service</th><th>Tip</th><th>Item Sold</th></tr>';
         detailTable.appendChild(detailHead);
 
         const detailBody = document.createElement('tbody');
@@ -321,9 +321,13 @@
           tipCell.textContent = currencyFmt.format(tx.tip || 0);
           tr.appendChild(tipCell);
 
-          const idCell = document.createElement('td');
-          idCell.textContent = tx.eventId;
-          tr.appendChild(idCell);
+          const itemCell = document.createElement('td');
+          const displayItem = (tx.itemSold && tx.itemSold.trim()) ? tx.itemSold : tx.eventId;
+          itemCell.textContent = displayItem || '—';
+          if(tx.eventId){
+            itemCell.title = tx.eventId;
+          }
+          tr.appendChild(itemCell);
 
           detailBody.appendChild(tr);
         }
