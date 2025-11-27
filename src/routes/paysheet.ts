@@ -3,6 +3,7 @@ import { Request, Response, Router } from "express";
 
 import { prisma } from "../lib/prisma";
 import { lookupProviderName } from "./employees";
+import { excludedServiceSet } from "./excludeservice";
 
 const router = Router();
 
@@ -42,6 +43,7 @@ type ProviderTransaction = {
   sale: number;
   tip: number;
   itemSold: string | null;
+  excludedFromAssistantFee: boolean;
 };
 
 type CommissionComparison = {
@@ -187,12 +189,15 @@ router.get("/data", async (req: Request, res: Response) => {
         .map(tx => {
           const eventId = tx?.eventId ? String(tx.eventId) : "";
           if (!eventId) return null;
+          const itemSold = typeof tx?.itemSold === "string" && tx.itemSold.trim() ? tx.itemSold.trim() : null;
+          const excludedFromAssistantFee = !!(itemSold && excludedServiceSet.has(itemSold.toLowerCase()));
           return {
             eventId,
             timestamp: typeof tx?.timestamp === "string" ? tx.timestamp : null,
             sale: Number(tx?.sale || 0),
             tip: Number(tx?.tip || 0),
-            itemSold: typeof tx?.itemSold === "string" && tx.itemSold.trim() ? tx.itemSold : null,
+            itemSold,
+            excludedFromAssistantFee,
           };
         })
         .filter((tx): tx is ProviderTransaction => tx !== null);
@@ -220,7 +225,10 @@ router.get("/data", async (req: Request, res: Response) => {
       const tipFeeRaw = tips * (tipFeePct / 100);
       const techTipRaw = tips - tipFeeRaw;
 
-      const assistantEligibleCount = transactions.filter(tx => Math.max(tx.sale - tx.tip, 0) >= 1).length;
+      const assistantEligibleCount = transactions.filter(tx => {
+        if (tx.excludedFromAssistantFee) return false;
+        return Math.max(tx.sale - tx.tip, 0) >= 1;
+      }).length;
       const assistantRate =
         servicePercentage === null ? 0 : servicePercentage >= 50 ? 2 : 1;
       const techAssistantFeeRaw = assistantEligibleCount * assistantRate;

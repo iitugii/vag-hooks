@@ -37,6 +37,9 @@
     .transactions-table{width:100%;border-collapse:collapse;font-size:.9rem;background:#f9fafb;}
     .transactions-table th,.transactions-table td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;}
     .transactions-table tbody tr:hover{background:#eef2ff;}
+    .transactions-table tbody tr.excluded-transaction{background:#fff4f5;}
+    .transactions-table tbody tr.excluded-transaction:hover{background:#ffe8eb;}
+    .tx-badge{display:inline-flex;align-items:center;padding:2px 6px;border-radius:999px;background:#f87171;color:#fff;font-size:.7rem;font-weight:600;margin-top:4px;letter-spacing:.03em;text-transform:uppercase;}
     .error{color:#b91c1c;margin-top:8px;}
     .status{color:var(--muted);margin-top:8px;}
   </style>
@@ -308,6 +311,10 @@
         const detailBody = document.createElement('tbody');
         for(const tx of row.transactions){
           const tr = document.createElement('tr');
+          const excluded = !!tx.excludedFromAssistantFee;
+          if(excluded){
+            tr.classList.add('excluded-transaction');
+          }
           const tsCell = document.createElement('td');
           tsCell.textContent = formatTransactionTime(tx.timestamp);
           tr.appendChild(tsCell);
@@ -326,6 +333,12 @@
           itemCell.textContent = displayItem || '—';
           if(tx.eventId){
             itemCell.title = tx.eventId;
+          }
+          if(excluded){
+            const badge = document.createElement('div');
+            badge.className = 'tx-badge';
+            badge.textContent = 'Excluded';
+            itemCell.appendChild(badge);
           }
           tr.appendChild(itemCell);
 
