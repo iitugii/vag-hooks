@@ -6,6 +6,7 @@ import { lookupProviderName } from "./employees";
 import { excludedServiceSet } from "./excludeservice";
 
 const router = Router();
+const AUTO_SPECIAL_DEDUCTION_AMOUNT = 42;
 
 router.get("/", (_req: Request, res: Response) => {
   res.sendFile(path.resolve(__dirname, "../../public/paysheet.html"));
@@ -40,6 +41,7 @@ type ProviderSummary = {
   tipFeePercentage: number | null;
   specialDeduction: number;
   specialAddition: number;
+  specialDeductionAutoApplied: boolean;
   housePay: number;
   techPay: number;
   tipFeeAmount: number;
@@ -317,14 +319,22 @@ router.get("/data", async (req: Request, res: Response) => {
           ? null
           : Number(row.tip_fee_percentage);
 
-      const specialDeductionRaw =
+      const specialDeductionConfiguredRaw =
         row.special_deduction === null || row.special_deduction === undefined
-          ? 0
+          ? null
           : Number(row.special_deduction);
       const specialAdditionRaw =
         row.special_addition === null || row.special_addition === undefined
           ? 0
           : Number(row.special_addition);
+      const shouldAutoApplySpecialDeduction =
+        servicePercentage !== null &&
+        servicePercentage >= 50 &&
+        specialDeductionConfiguredRaw === null;
+
+      const specialDeductionRaw = shouldAutoApplySpecialDeduction
+        ? AUTO_SPECIAL_DEDUCTION_AMOUNT
+        : specialDeductionConfiguredRaw ?? 0;
 
       const serviceBaseRaw = totalNewServiceRaw;
       const techServiceRaw =
@@ -364,6 +374,7 @@ router.get("/data", async (req: Request, res: Response) => {
       const tipFeeAmount = roundCurrency(tipFeeRaw);
       const specialDeduction = roundCurrency(specialDeductionRaw);
       const specialAddition = roundCurrency(specialAdditionRaw);
+      const specialDeductionAutoApplied = shouldAutoApplySpecialDeduction;
 
       const commissionComparison:
         | CommissionComparison
@@ -391,6 +402,7 @@ router.get("/data", async (req: Request, res: Response) => {
         tipFeePercentage,
         specialDeduction,
         specialAddition,
+        specialDeductionAutoApplied,
         housePay,
         techPay,
         tipFeeAmount,
@@ -404,9 +416,10 @@ router.get("/data", async (req: Request, res: Response) => {
     providers.sort((a, b) => {
       const nameA = (a.providerName || a.providerId || "").toLowerCase();
       const nameB = (b.providerName || b.providerId || "").toLowerCase();
-      if (nameA < nameB) return -1;
-      if (nameA > nameB) return 1;
-      return 0;
+      if (nameA === nameB) {
+        return (a.providerId || "").localeCompare(b.providerId || "");
+      }
+      return nameA.localeCompare(nameB);
     });
 
     const totals = providers.reduce(
@@ -494,6 +507,7 @@ router.get("/data", async (req: Request, res: Response) => {
         tipFeePercentage: row.tipFeePercentage,
         specialDeduction: row.specialDeduction,
         specialAddition: row.specialAddition,
+        specialDeductionAutoApplied: row.specialDeductionAutoApplied,
         totalSales: row.totalSales,
         totalAmountDue: row.totalAmountDue,
         totalCashDelta: row.totalCashDelta,

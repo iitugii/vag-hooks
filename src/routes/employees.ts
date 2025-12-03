@@ -17,7 +17,7 @@ export const providerDirectory: Record<string, string> = {
     "8m0Pi9tJgReoyUxrRqq-Nw==": "Fany Colome",
     "1f0-pADxzjo5oCJfQvqwEg==": "Elianys Vigoa",
     "cOuMhKYYXwez7hlBoLpnPg==": "Lily S",
-    "2~XMU4-eycP4LHBPEzpyVQ==": "Orianna Taborda"
+    "2~XMU4-eycP4LHBPEzpyVQ==": "Orianna Taborda",
 
 
 

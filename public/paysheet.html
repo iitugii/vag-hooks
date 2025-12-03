@@ -322,6 +322,12 @@
         label: 'Special Deduction',
         token
       }));
+      if(row.specialDeductionAutoApplied){
+        const autoNote = document.createElement('div');
+        autoNote.className = 'cell-sub';
+        autoNote.textContent = `Auto default ${currencyFmt.format(row.specialDeduction || 0)} for 50% tech`;
+        deductionCell.appendChild(autoNote);
+      }
       summaryRow.appendChild(deductionCell);
 
       const additionCell = document.createElement('td');
