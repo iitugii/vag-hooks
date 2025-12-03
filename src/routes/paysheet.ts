@@ -14,6 +14,10 @@ router.get("/", (_req: Request, res: Response) => {
 type WeeklySummaryRow = {
   provider_id: string | null;
   total_sales: number | null;
+  total_amount_due: number | null;
+  total_cash_delta: number | null;
+  total_cc_delta: number | null;
+  total_gc_redemption: number | null;
   total_tips: number | null;
   service_percentage: number | null;
   tip_fee_percentage: number | null;
@@ -25,6 +29,11 @@ type ProviderSummary = {
   providerId: string;
   providerName: string | null;
   totalSales: number;
+  totalAmountDue: number;
+  totalCashDelta: number;
+  totalCcDelta: number;
+  totalGcRedemption: number;
+  totalNewService: number;
   tips: number;
   servicePercentage: number | null;
   tipFeePercentage: number | null;
@@ -35,6 +44,15 @@ type ProviderSummary = {
   techAssistantFee: number;
   commissionComparison: CommissionComparison | null;
   transactions: ProviderTransaction[];
+  formulaComponents: ProviderFormulaComponents;
+};
+
+type ProviderFormulaComponents = {
+  cashAmount: number;
+  amountDue: number;
+  cardAmount: number;
+  giftCard: number;
+  tip: number;
 };
 
 type ProviderTransaction = {
@@ -42,6 +60,13 @@ type ProviderTransaction = {
   timestamp: string | null;
   sale: number;
   tip: number;
+  amountDue: number;
+  cashAmount: number;
+  cashDelta: number;
+  ccAmount: number;
+  ccDelta: number;
+  gcRedemption: number;
+  newServiceValue: number;
   itemSold: string | null;
   excludedFromAssistantFee: boolean;
 };
@@ -59,6 +84,10 @@ type RawTransaction = {
   timestamp?: string | null;
   sale?: number | null;
   tip?: number | null;
+  amountDue?: number | null;
+  cashAmount?: number | null;
+  ccAmount?: number | null;
+  gcRedemption?: number | null;
   itemSold?: string | null;
 };
 
@@ -121,6 +150,21 @@ router.get("/data", async (req: Request, res: Response) => {
             COALESCE((payload->>'bankAccountAmount')::numeric, (payload->'payload'->>'bankAccountAmount')::numeric, 0) +
             COALESCE((payload->>'vagaroPayLaterAmount')::numeric, (payload->'payload'->>'vagaroPayLaterAmount')::numeric, 0)
           )::double precision AS tender_total
+          , COALESCE(
+            (payload->>'cashAmount')::numeric,
+            (payload->'payload'->>'cashAmount')::numeric,
+            0
+          )::double precision AS cash_amount_raw
+          , COALESCE(
+            (payload->>'ccAmount')::numeric,
+            (payload->'payload'->>'ccAmount')::numeric,
+            0
+          )::double precision AS cc_amount_raw
+          , COALESCE(
+            (payload->>'gcRedemption')::numeric,
+            (payload->'payload'->>'gcRedemption')::numeric,
+            0
+          )::double precision AS gc_redemption_raw
         FROM week_scope
       ),
       normalized_final AS (
@@ -135,6 +179,10 @@ router.get("/data", async (req: Request, res: Response) => {
             ELSE COALESCE(amount_due_raw, 0)
           END AS sale_amount,
           tip_amount,
+          amount_due_raw,
+          cash_amount_raw,
+          cc_amount_raw,
+          gc_redemption_raw,
           item_sold
         FROM normalized
       ),
@@ -145,6 +193,10 @@ router.get("/data", async (req: Request, res: Response) => {
           ts_local,
           sale_amount,
           tip_amount,
+          amount_due_raw,
+          cash_amount_raw,
+          cc_amount_raw,
+          gc_redemption_raw,
           item_sold
         FROM normalized_final
         ORDER BY event_id, ts_local DESC
@@ -152,6 +204,10 @@ router.get("/data", async (req: Request, res: Response) => {
       SELECT
         d.provider_id,
         SUM(GREATEST(d.sale_amount - d.tip_amount, 0)) AS total_sales,
+        SUM(COALESCE(d.amount_due_raw, 0)) AS total_amount_due,
+        SUM(COALESCE(d.cash_amount_raw, 0) - COALESCE(d.amount_due_raw, 0)) AS total_cash_delta,
+        SUM(COALESCE(d.cc_amount_raw, 0) + COALESCE(d.gc_redemption_raw, 0) - COALESCE(d.tip_amount, 0)) AS total_cc_delta,
+        SUM(COALESCE(d.gc_redemption_raw, 0)) AS total_gc_redemption,
         SUM(d.tip_amount) AS total_tips,
         MAX(pp."servicePercentage") AS service_percentage,
         MAX(pp."tipFeePercentage") AS tip_fee_percentage,
@@ -163,6 +219,10 @@ router.get("/data", async (req: Request, res: Response) => {
               'timestamp', d.ts_local,
               'sale', d.sale_amount,
               'tip', d.tip_amount,
+              'amountDue', d.amount_due_raw,
+              'cashAmount', d.cash_amount_raw,
+              'ccAmount', d.cc_amount_raw,
+              'gcRedemption', d.gc_redemption_raw,
               'itemSold', d.item_sold
             )
             ORDER BY d.ts_local
@@ -178,7 +238,16 @@ router.get("/data", async (req: Request, res: Response) => {
     const providers: ProviderSummary[] = rows.map((row: WeeklySummaryRow) => {
       const providerId = row.provider_id || "(unknown)";
       const providerName = lookupProviderName(providerId) || null;
-      const totalSales = roundCurrency(Number(row.total_sales || 0));
+      const totalSalesRaw = Number(row.total_sales || 0);
+      const totalAmountDueRaw = Number(row.total_amount_due || 0);
+      const totalCashDeltaRaw = Number(row.total_cash_delta || 0);
+      const totalCcDeltaRaw = Number(row.total_cc_delta || 0);
+      const totalGcRedemptionRaw = Number(row.total_gc_redemption || 0);
+      const totalSales = roundCurrency(totalSalesRaw);
+      const totalAmountDue = roundCurrency(totalAmountDueRaw);
+      const totalCashDelta = roundCurrency(totalCashDeltaRaw);
+      const totalCcDelta = roundCurrency(totalCcDeltaRaw);
+      const totalGcRedemption = roundCurrency(totalGcRedemptionRaw);
       const tips = roundCurrency(Number(row.total_tips || 0));
 
       const rawTransactions = Array.isArray(row.transactions)
@@ -190,17 +259,50 @@ router.get("/data", async (req: Request, res: Response) => {
           const eventId = tx?.eventId ? String(tx.eventId) : "";
           if (!eventId) return null;
           const itemSold = typeof tx?.itemSold === "string" && tx.itemSold.trim() ? tx.itemSold.trim() : null;
+          const amountDue = Number(tx?.amountDue ?? 0);
+          const cashAmount = Number(tx?.cashAmount ?? 0);
+          const ccAmount = Number(tx?.ccAmount ?? 0);
+          const gcAmount = Number(tx?.gcRedemption ?? 0);
+          const cashDelta = cashAmount - amountDue;
+          const ccDelta = ccAmount + gcAmount - Number(tx?.tip ?? 0);
+          const newServiceValue = cashDelta + ccDelta;
           const excludedFromAssistantFee = !!(itemSold && excludedServiceSet.has(itemSold.toLowerCase()));
           return {
             eventId,
             timestamp: typeof tx?.timestamp === "string" ? tx.timestamp : null,
             sale: Number(tx?.sale || 0),
             tip: Number(tx?.tip || 0),
+            amountDue: Number.isFinite(amountDue) ? amountDue : 0,
+            cashAmount: Number.isFinite(cashAmount) ? cashAmount : 0,
+            cashDelta: Number.isFinite(cashDelta) ? cashDelta : 0,
+            ccAmount: Number.isFinite(ccAmount) ? ccAmount : 0,
+            ccDelta: Number.isFinite(ccDelta) ? ccDelta : 0,
+            gcRedemption: Number.isFinite(gcAmount) ? gcAmount : 0,
+            newServiceValue: Number.isFinite(newServiceValue) ? newServiceValue : 0,
             itemSold,
             excludedFromAssistantFee,
           };
         })
         .filter((tx): tx is ProviderTransaction => tx !== null);
+
+      const formulaComponents = transactions.reduce<ProviderFormulaComponents>(
+        (acc, tx) => {
+          const addIfFinite = (current: number, value: number) =>
+            current + (Number.isFinite(value) ? value : 0);
+          acc.cashAmount = addIfFinite(acc.cashAmount, tx.cashAmount);
+          acc.amountDue = addIfFinite(acc.amountDue, tx.amountDue);
+          acc.cardAmount = addIfFinite(acc.cardAmount, tx.ccAmount);
+          acc.giftCard = addIfFinite(acc.giftCard, tx.gcRedemption);
+          acc.tip = addIfFinite(acc.tip, tx.tip);
+          return acc;
+        },
+        { cashAmount: 0, amountDue: 0, cardAmount: 0, giftCard: 0, tip: 0 }
+      );
+
+      const totalNewServiceRaw =
+        (formulaComponents.cashAmount - formulaComponents.amountDue) +
+        ((formulaComponents.cardAmount + formulaComponents.giftCard) - formulaComponents.tip);
+      const totalNewService = roundCurrency(totalNewServiceRaw);
 
       const servicePercentage =
         row.service_percentage === null || row.service_percentage === undefined
@@ -225,13 +327,21 @@ router.get("/data", async (req: Request, res: Response) => {
       const tipFeeRaw = tips * (tipFeePct / 100);
       const techTipRaw = tips - tipFeeRaw;
 
-      const assistantEligibleCount = transactions.filter(tx => {
-        if (tx.excludedFromAssistantFee) return false;
-        return Math.max(tx.sale - tx.tip, 0) >= 1;
-      }).length;
-      const assistantRate =
+      const assistantRateBase =
         servicePercentage === null ? 0 : servicePercentage >= 50 ? 2 : 1;
-      const techAssistantFeeRaw = assistantEligibleCount * assistantRate;
+      // 45% techs use base $1; 50%+ use $2. Services with "and" count double.
+      const techAssistantFeeRaw = transactions.reduce((sum, tx) => {
+        if (tx.excludedFromAssistantFee) {
+          return sum;
+        }
+        const serviceValue = Math.max(tx.sale - tx.tip, 0);
+        if (serviceValue < 1) {
+          return sum;
+        }
+        const descriptor = typeof tx.itemSold === "string" ? tx.itemSold.toLowerCase() : "";
+        const multiplier = descriptor.includes(" and ") ? 2 : 1;
+        return sum + assistantRateBase * multiplier;
+      }, 0);
 
       const housePay = roundCurrency(
         houseServiceRaw + tipFeeRaw + techAssistantFeeRaw + specialDeductionRaw
@@ -259,6 +369,11 @@ router.get("/data", async (req: Request, res: Response) => {
         providerId,
         providerName,
         totalSales,
+        totalAmountDue,
+        totalCashDelta,
+        totalCcDelta,
+        totalGcRedemption,
+        totalNewService,
         tips,
         servicePercentage,
         tipFeePercentage,
@@ -269,33 +384,71 @@ router.get("/data", async (req: Request, res: Response) => {
         techAssistantFee,
         commissionComparison,
         transactions,
+        formulaComponents,
       };
+    });
+
+    providers.sort((a, b) => {
+      const nameA = (a.providerName || a.providerId || "").toLowerCase();
+      const nameB = (b.providerName || b.providerId || "").toLowerCase();
+      if (nameA < nameB) return -1;
+      if (nameA > nameB) return 1;
+      return 0;
     });
 
     const totals = providers.reduce(
       (acc, row) => {
         acc.totalSales += row.totalSales;
+        acc.totalAmountDue += row.totalAmountDue;
+        acc.totalCashDelta += row.totalCashDelta;
+        acc.totalCcDelta += row.totalCcDelta;
+        acc.totalGcRedemption += row.totalGcRedemption;
         acc.tips += row.tips;
         acc.housePay += row.housePay;
         acc.techPay += row.techPay;
         acc.tipFee += row.tipFeeAmount;
         acc.techAssistantFee += row.techAssistantFee;
         acc.specialDeduction += row.specialDeduction;
+        acc.formulaComponents.cashAmount += row.formulaComponents.cashAmount;
+        acc.formulaComponents.amountDue += row.formulaComponents.amountDue;
+        acc.formulaComponents.cardAmount += row.formulaComponents.cardAmount;
+        acc.formulaComponents.giftCard += row.formulaComponents.giftCard;
+        acc.formulaComponents.tip += row.formulaComponents.tip;
         return acc;
       },
       {
         totalSales: 0,
+        totalAmountDue: 0,
+        totalCashDelta: 0,
+        totalCcDelta: 0,
+        totalGcRedemption: 0,
         tips: 0,
         housePay: 0,
         techPay: 0,
         tipFee: 0,
         techAssistantFee: 0,
         specialDeduction: 0,
+        formulaComponents: {
+          cashAmount: 0,
+          amountDue: 0,
+          cardAmount: 0,
+          giftCard: 0,
+          tip: 0,
+        },
       }
     );
 
     const totalsRounded = {
       totalSales: roundCurrency(totals.totalSales),
+      totalAmountDue: roundCurrency(totals.totalAmountDue),
+      totalCashDelta: roundCurrency(totals.totalCashDelta),
+      totalCcDelta: roundCurrency(totals.totalCcDelta),
+      totalGcRedemption: roundCurrency(totals.totalGcRedemption),
+      oldServiceTotal: roundCurrency(totals.totalSales),
+      newServiceTotal: roundCurrency(
+        (totals.formulaComponents.cashAmount - totals.formulaComponents.amountDue) +
+          ((totals.formulaComponents.cardAmount + totals.formulaComponents.giftCard) - totals.formulaComponents.tip)
+      ),
       tips: roundCurrency(totals.tips),
       housePay: roundCurrency(totals.housePay),
       techPay: roundCurrency(totals.techPay),
@@ -305,6 +458,13 @@ router.get("/data", async (req: Request, res: Response) => {
       commissionDiff: roundCurrency(
         providers.reduce((sum, row) => sum + (row.commissionComparison?.deltaAmount || 0), 0)
       ),
+      formulaComponents: {
+        cashAmount: roundCurrency(totals.formulaComponents.cashAmount),
+        amountDue: roundCurrency(totals.formulaComponents.amountDue),
+        cardAmount: roundCurrency(totals.formulaComponents.cardAmount),
+        giftCard: roundCurrency(totals.formulaComponents.giftCard),
+        tip: roundCurrency(totals.formulaComponents.tip),
+      },
     };
 
     res.json({
@@ -318,6 +478,12 @@ router.get("/data", async (req: Request, res: Response) => {
         tipFeePercentage: row.tipFeePercentage,
         specialDeduction: row.specialDeduction,
         totalSales: row.totalSales,
+        totalAmountDue: row.totalAmountDue,
+        totalCashDelta: row.totalCashDelta,
+        totalCcDelta: row.totalCcDelta,
+        totalGcRedemption: row.totalGcRedemption,
+        oldServiceTotal: row.totalSales,
+        newServiceTotal: row.totalNewService,
         tips: row.tips,
         housePay: row.housePay,
         techPay: row.techPay,
@@ -325,6 +491,7 @@ router.get("/data", async (req: Request, res: Response) => {
         techAssistantFee: row.techAssistantFee,
         commissionComparison: row.commissionComparison,
         transactions: row.transactions,
+        formulaComponents: row.formulaComponents,
       })),
     });
   } catch (err: any) {

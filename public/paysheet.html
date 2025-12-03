@@ -42,6 +42,8 @@
     .transactions-table tbody tr.excluded-transaction{background:#fff4f5;}
     .transactions-table tbody tr.excluded-transaction:hover{background:#ffe8eb;}
     .tx-badge{display:inline-flex;align-items:center;padding:2px 6px;border-radius:999px;background:#f87171;color:#fff;font-size:.7rem;font-weight:600;margin-top:4px;letter-spacing:.03em;text-transform:uppercase;}
+    .positive-delta{color:#15803d;font-weight:600;}
+    .negative-delta{color:#b91c1c;font-weight:600;}
     .error{color:#b91c1c;margin-top:8px;}
     .status{color:var(--muted);margin-top:8px;}
   </style>
@@ -62,7 +64,8 @@
 
   <div class="card">
     <div class="totals">
-      <div>Service Total: <span id="totalSales">$0.00</span></div>
+      <div>New Service Total: <span id="totalNewService">$0.00</span><div class="cell-sub" id="totalNewServiceFormula"></div></div>
+      <div>Gift Card Redemption: <span id="totalGcRedemption">$0.00</span></div>
       <div>Tips: <span id="totalTips">$0.00</span></div>
       <div>Tip Fee: <span id="totalTipFee">$0.00</span></div>
       <div>Special Deductions: <span id="totalSpecialDeduction">$0.00</span></div>
@@ -79,7 +82,7 @@
         <tr>
           <th>Service Provider</th>
           <th>Service %</th>
-          <th>Service Total</th>
+          <th>New Service Total</th>
           <th>Tips</th>
           <th>House Pay</th>
           <th>Tip Fee %</th>
@@ -101,7 +104,9 @@
   const weekStartInput = document.getElementById('weekStart');
   const authInput = document.getElementById('auth');
   const loadBtn = document.getElementById('load');
-  const totalSalesEl = document.getElementById('totalSales');
+  const totalNewServiceEl = document.getElementById('totalNewService');
+  const totalNewServiceFormulaEl = document.getElementById('totalNewServiceFormula');
+  const totalGcRedemptionEl = document.getElementById('totalGcRedemption');
   const totalTipsEl = document.getElementById('totalTips');
   const totalTipFeeEl = document.getElementById('totalTipFee');
   const totalSpecialDeductionEl = document.getElementById('totalSpecialDeduction');
@@ -165,7 +170,34 @@
 
   function renderWeek(data, token){
     statusEl.textContent = `Week ${data.weekStart} – ${data.weekEnd}`;
-    totalSalesEl.textContent = currencyFmt.format(data.totals.totalSales || 0);
+    const newServiceAggregate = data.totals.newServiceTotal ?? 0;
+    totalNewServiceEl.textContent = currencyFmt.format(newServiceAggregate);
+    totalNewServiceEl.classList.remove('positive-delta','negative-delta');
+    if(newServiceAggregate > 0){
+      totalNewServiceEl.classList.add('positive-delta');
+    } else if(newServiceAggregate < 0){
+      totalNewServiceEl.classList.add('negative-delta');
+    }
+    if(totalNewServiceFormulaEl){
+      const totalsFormula = data.totals?.formulaComponents || {};
+      const fmt = value => {
+        const numeric = Number(value || 0);
+        return currencyFmt.format(Math.abs(numeric) < 0.0005 ? 0 : numeric);
+      };
+      if(
+        totalsFormula &&
+        (totalsFormula.cashAmount !== undefined ||
+          totalsFormula.amountDue !== undefined ||
+          totalsFormula.cardAmount !== undefined ||
+          totalsFormula.giftCard !== undefined ||
+          totalsFormula.tip !== undefined)
+      ){
+        totalNewServiceFormulaEl.textContent = `(${fmt(totalsFormula.cashAmount)} - ${fmt(totalsFormula.amountDue)}) + ((${fmt(totalsFormula.cardAmount)} + ${fmt(totalsFormula.giftCard)}) - ${fmt(totalsFormula.tip)})`;
+      } else {
+        totalNewServiceFormulaEl.textContent = '';
+      }
+    }
+    totalGcRedemptionEl.textContent = currencyFmt.format(data.totals.totalGcRedemption || 0);
     totalTipsEl.textContent = currencyFmt.format(data.totals.tips || 0);
     totalTipFeeEl.textContent = currencyFmt.format(data.totals.tipFee || 0);
     totalSpecialDeductionEl.textContent = currencyFmt.format(data.totals.specialDeduction || 0);
@@ -215,9 +247,26 @@
       }));
       summaryRow.appendChild(serviceCell);
 
-      const salesCell = document.createElement('td');
-      salesCell.textContent = currencyFmt.format(row.totalSales || 0);
-      summaryRow.appendChild(salesCell);
+      const newServiceCell = document.createElement('td');
+      const providerNewService = row.newServiceTotal ?? 0;
+      newServiceCell.textContent = currencyFmt.format(providerNewService);
+      if(providerNewService > 0){
+        newServiceCell.classList.add('positive-delta');
+      } else if(providerNewService < 0){
+        newServiceCell.classList.add('negative-delta');
+      }
+      const fc = row.formulaComponents || {};
+      const normalize = value => (Math.abs(value) < 0.0005 ? 0 : value);
+      const cashAmountTotal = normalize(Number(fc.cashAmount || 0));
+      const amountDueTotal = normalize(Number(fc.amountDue || 0));
+      const cardAmountTotal = normalize(Number(fc.cardAmount || 0));
+      const gcAmountTotal = normalize(Number(fc.giftCard || 0));
+      const tipTotal = normalize(Number(fc.tip || 0));
+      const breakdown = document.createElement('div');
+      breakdown.className = 'cell-sub';
+      breakdown.textContent = `(${currencyFmt.format(cashAmountTotal)} - ${currencyFmt.format(amountDueTotal)}) + ((${currencyFmt.format(cardAmountTotal)} + ${currencyFmt.format(gcAmountTotal)}) - ${currencyFmt.format(tipTotal)})`;
+      newServiceCell.appendChild(breakdown);
+      summaryRow.appendChild(newServiceCell);
 
       const tipsCell = document.createElement('td');
       tipsCell.textContent = currencyFmt.format(row.tips || 0);
@@ -307,7 +356,7 @@
         detailTable.className = 'transactions-table';
 
         const detailHead = document.createElement('thead');
-        detailHead.innerHTML = '<tr><th>Date & Time</th><th>Service</th><th>Tip</th><th>Item Sold</th></tr>';
+        detailHead.innerHTML = '<tr><th>Date & Time</th><th>Cash Amount</th><th>Amount Due</th><th>Card Amount</th><th>Gift Card</th><th>Tip</th><th>Service Total</th><th>Item Sold</th></tr>';
         detailTable.appendChild(detailHead);
 
         const detailBody = document.createElement('tbody');
@@ -321,14 +370,50 @@
           tsCell.textContent = formatTransactionTime(tx.timestamp);
           tr.appendChild(tsCell);
 
-          const amountCell = document.createElement('td');
-          const serviceValue = Math.max((tx.sale || 0) - (tx.tip || 0), 0);
-          amountCell.textContent = currencyFmt.format(serviceValue);
-          tr.appendChild(amountCell);
+          const cashAmountCell = document.createElement('td');
+          const cashAmountValue = Number(tx.cashAmount || 0);
+          cashAmountCell.textContent = currencyFmt.format(cashAmountValue);
+          tr.appendChild(cashAmountCell);
+
+          const amountDueCell = document.createElement('td');
+          const amountDueValue = Number(tx.amountDue || 0);
+          amountDueCell.textContent = currencyFmt.format(amountDueValue);
+          tr.appendChild(amountDueCell);
+
+          const cardAmountCell = document.createElement('td');
+          const cardAmountValue = Number(tx.ccAmount || 0);
+          cardAmountCell.textContent = currencyFmt.format(cardAmountValue);
+          tr.appendChild(cardAmountCell);
+
+          const gcCell = document.createElement('td');
+          const gcValue = Number(tx.gcRedemption || 0);
+          gcCell.textContent = currencyFmt.format(gcValue);
+          tr.appendChild(gcCell);
 
           const tipCell = document.createElement('td');
-          tipCell.textContent = currencyFmt.format(tx.tip || 0);
+          const tipValue = Number(tx.tip || 0);
+          tipCell.textContent = currencyFmt.format(tipValue);
           tr.appendChild(tipCell);
+
+          const newServiceCell = document.createElement('td');
+          const newServiceValue = Number(tx.newServiceValue || 0);
+          const cashMinusDue = cashAmountValue - amountDueValue;
+          const cardPlusGc = cardAmountValue + gcValue;
+          const cardLessTip = cardPlusGc - tipValue;
+          const normalize = value => (Math.abs(value) < 0.0005 ? 0 : value);
+          newServiceCell.textContent = currencyFmt.format(normalize(newServiceValue));
+          if(newServiceValue !== 0){
+            newServiceCell.classList.add(newServiceValue > 0 ? 'positive-delta' : 'negative-delta');
+          }
+          const formula = document.createElement('div');
+          formula.className = 'cell-sub';
+          formula.textContent = `(${currencyFmt.format(normalize(cashAmountValue))} - ${currencyFmt.format(normalize(amountDueValue))}) + ((${currencyFmt.format(normalize(cardAmountValue))} + ${currencyFmt.format(normalize(gcValue))}) - ${currencyFmt.format(normalize(tipValue))})`;
+          const result = document.createElement('div');
+          result.className = 'cell-sub';
+          result.textContent = `= ${currencyFmt.format(normalize(cashMinusDue))} + ${currencyFmt.format(normalize(cardLessTip))} = ${currencyFmt.format(normalize(newServiceValue))}`;
+          newServiceCell.appendChild(formula);
+          newServiceCell.appendChild(result);
+          tr.appendChild(newServiceCell);
 
           const itemCell = document.createElement('td');
           itemCell.className = 'item-cell';
