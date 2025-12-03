@@ -6,6 +6,7 @@ import { lookupProviderName } from "./employees";
 import { excludedServiceSet } from "./excludeservice";
 
 const router = Router();
+const AUTO_SPECIAL_DEDUCTION_AMOUNT = 42;
 
 router.get("/", (_req: Request, res: Response) => {
   res.sendFile(path.resolve(__dirname, "../../public/paysheet.html"));
@@ -29,6 +30,7 @@ type ProviderSummary = {
   servicePercentage: number | null;
   tipFeePercentage: number | null;
   specialDeduction: number;
+  specialDeductionAutoApplied: boolean;
   housePay: number;
   techPay: number;
   tipFeeAmount: number;
@@ -212,10 +214,19 @@ router.get("/data", async (req: Request, res: Response) => {
           ? null
           : Number(row.tip_fee_percentage);
 
-      const specialDeductionRaw =
+      const specialDeductionConfiguredRaw =
         row.special_deduction === null || row.special_deduction === undefined
-          ? 0
+          ? null
           : Number(row.special_deduction);
+
+      const shouldAutoApplySpecialDeduction =
+        servicePercentage !== null &&
+        servicePercentage >= 50 &&
+        specialDeductionConfiguredRaw === null;
+
+      const specialDeductionRaw = shouldAutoApplySpecialDeduction
+        ? AUTO_SPECIAL_DEDUCTION_AMOUNT
+        : specialDeductionConfiguredRaw ?? 0;
 
       const techServiceRaw =
         servicePercentage === null ? 0 : totalSales * (servicePercentage / 100);
@@ -242,6 +253,7 @@ router.get("/data", async (req: Request, res: Response) => {
       const techAssistantFee = roundCurrency(techAssistantFeeRaw);
       const tipFeeAmount = roundCurrency(tipFeeRaw);
       const specialDeduction = roundCurrency(specialDeductionRaw);
+      const specialDeductionAutoApplied = shouldAutoApplySpecialDeduction;
 
       const commissionComparison:
         | CommissionComparison
@@ -267,9 +279,19 @@ router.get("/data", async (req: Request, res: Response) => {
         techPay,
         tipFeeAmount,
         techAssistantFee,
+        specialDeductionAutoApplied,
         commissionComparison,
         transactions,
       };
+    });
+
+    providers.sort((a, b) => {
+      const nameA = (a.providerName || a.providerId || "").toLowerCase();
+      const nameB = (b.providerName || b.providerId || "").toLowerCase();
+      if (nameA === nameB) {
+        return (a.providerId || "").localeCompare(b.providerId || "");
+      }
+      return nameA.localeCompare(nameB);
     });
 
     const totals = providers.reduce(
@@ -317,6 +339,7 @@ router.get("/data", async (req: Request, res: Response) => {
         servicePercentage: row.servicePercentage,
         tipFeePercentage: row.tipFeePercentage,
         specialDeduction: row.specialDeduction,
+        specialDeductionAutoApplied: row.specialDeductionAutoApplied,
         totalSales: row.totalSales,
         tips: row.tips,
         housePay: row.housePay,

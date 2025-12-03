@@ -7,8 +7,8 @@ export const providerDirectory: Record<string, string> = {
     "iGdlKrBiZNl~zAXcKYHAtg==": "Anaisleidys Olivert",
     "lLHKiHNGeN0d-CmqhnUIzg==": "Kenia Fernandez",
     "qloWTWPGZbaXLm62UEZezw==": "Ghislaine Rodriguez",
-    "RL~9TokljBGmTZJrF~OONQ==": "Isabel Guerrero",
-    "u41~oI~Elac3QmDg0IE3LQ==": "Marielbys Miranda",
+    "RL~9TokljBGmTZJrF~OONQ==": "Marielbys Rodriguez",
+    "u41~oI~Elac3QmDg0IE3LQ==": "Isabel Guerrero",
     "DYOsnZF92isbHl0aVQtB5w==": "Alex Santiesteban",
     "RgW1Yi3geC8oYpX-jPt1xg==": "Mary Betandcourt",
     "XYSdsoZNLpg~vz42OYwQPg==": "Giselle Navarro",
@@ -17,6 +17,9 @@ export const providerDirectory: Record<string, string> = {
     "8m0Pi9tJgReoyUxrRqq-Nw==": "Fany Colome",
     "1f0-pADxzjo5oCJfQvqwEg==": "Elianys Vigoa",
     "cOuMhKYYXwez7hlBoLpnPg==": "Lily S",
+    "2~XMU4-eycP4LHBPEzpyVQ==": "Orianna Taborda",
+    
+    
 
 
 
