@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import morgan from "morgan";
 import cors from "cors";
@@ -15,6 +16,7 @@ import metricsRouter from "./routes/metrics";
 import cashoutRouter from "./routes/cashout";
 import debugRouter from "./routes/debug";
 import debugFindRouter from "./routes/debugFind";
+import paysheetRouter from "./routes/paysheet";
 
 
 const app = express();
@@ -53,6 +55,7 @@ app.use("/dashboard", gate, dashboardRouter);  // gated if DASH_TOKEN is set
 app.use("/export", gate, exportRouter);        // gated if DASH_TOKEN is set
 app.use("/metrics", gate, metricsRouter);      // gated if DASH_TOKEN is set
 app.use("/cashout", gate, cashoutRouter);      // gated if DASH_TOKEN is set
+app.use("/paysheet", gate, paysheetRouter);    // gated if DASH_TOKEN is set
 app.use("/webhooks/vagaro", vagaroRouter);
 app.use("/", debugRouter);
 

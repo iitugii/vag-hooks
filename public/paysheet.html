@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Weekly Paysheet</title>
+  <style>
+    :root { --bg:#f8f9fb; --fg:#111827; --muted:#6b7280; --line:#e5e7eb; --accent:#2563eb; --card:#fff; }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;background:var(--bg);color:var(--fg);padding:24px;}
+    h1{margin:0 0 12px 0;}
+    .controls{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px;align-items:flex-end;}
+    label{display:flex;flex-direction:column;font-size:.875rem;color:var(--muted);gap:4px;}
+    input{padding:8px 10px;border:1px solid var(--line);border-radius:8px;min-width:220px;}
+    button{padding:10px 16px;border:0;border-radius:8px;background:var(--accent);color:#fff;font-weight:600;cursor:pointer;}
+    button:disabled{opacity:.6;cursor:wait;}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px;}
+    .totals{display:flex;gap:24px;font-size:1.1rem;font-weight:600;flex-wrap:wrap;}
+    .totals span{color:var(--accent);}
+    .provider-cell{display:flex;flex-direction:column;gap:2px;}
+    .provider-name{font-weight:600;}
+    .provider-name.tip-highlight{text-decoration:underline dotted;color:var(--accent);cursor:help;}
+    .provider-id{font-size:.75rem;color:var(--muted);word-break:break-all;}
+    .cell-sub{font-size:.75rem;color:var(--muted);}
+    table{width:100%;border-collapse:collapse;margin-top:12px;font-size:.95rem;}
+    th,td{padding:10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle;}
+    tbody tr:hover{background:#f1f5ff;}
+    .config-input{display:flex;align-items:center;gap:8px;max-width:140px;}
+    .config-input input{min-width:0;width:90px;padding:6px 8px;}
+    .config-input .affix{color:var(--muted);font-size:.9rem;}
+    .toggle-btn{padding:6px 10px;border:1px solid var(--accent);border-radius:8px;background:#fff;color:var(--accent);font-weight:600;cursor:pointer;font-size:.85rem;}
+    .toggle-btn[aria-expanded="true"]{background:var(--accent);color:#fff;}
+    .toggle-btn:disabled{opacity:.5;border-color:var(--line);color:var(--muted);cursor:not-allowed;background:#fff;}
+    .detail-row.hidden{display:none;}
+    .hidden{display:none;}
+    .detail-container{padding:8px 0;}
+    .transactions-table{width:100%;border-collapse:collapse;font-size:.9rem;background:#f9fafb;}
+    .transactions-table th,.transactions-table td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;}
+    .transactions-table td.item-cell{display:flex;align-items:center;gap:8px;justify-content:space-between;min-height:30px;}
+    .transactions-table td.item-cell .tx-item-label{flex:1;min-width:0;}
+    .transactions-table tbody tr:hover{background:#eef2ff;}
+    .transactions-table tbody tr.excluded-transaction{background:#fff4f5;}
+    .transactions-table tbody tr.excluded-transaction:hover{background:#ffe8eb;}
+    .tx-badge{display:inline-flex;align-items:center;padding:2px 6px;border-radius:999px;background:#f87171;color:#fff;font-size:.7rem;font-weight:600;margin-top:4px;letter-spacing:.03em;text-transform:uppercase;}
+    .positive-delta{color:#15803d;font-weight:600;}
+    .negative-delta{color:#b91c1c;font-weight:600;}
+    .error{color:#b91c1c;margin-top:8px;}
+    .status{color:var(--muted);margin-top:8px;}
+  </style>
+</head>
+<body>
+  <h1>Weekly Paysheet</h1>
+  <p class="status" id="status">Select a week to load provider pay totals.</p>
+
+  <div class="controls">
+    <label>Week Starting
+      <input id="weekStart" type="date" />
+    </label>
+    <label>Auth Token (optional)
+      <input id="auth" placeholder="DASH_TOKEN" />
+    </label>
+    <button id="load">Load Week</button>
+  </div>
+
+  <div class="card">
+    <div class="totals">
+      <div>New Service Total: <span id="totalNewService">$0.00</span><div class="cell-sub" id="totalNewServiceFormula"></div></div>
+      <div>Gift Card Redemption: <span id="totalGcRedemption">$0.00</span></div>
+      <div>Tips: <span id="totalTips">$0.00</span></div>
+      <div>Tip Fee: <span id="totalTipFee">$0.00</span></div>
+      <div>Special Deductions: <span id="totalSpecialDeduction">$0.00</span></div>
+      <div>Special Additions: <span id="totalSpecialAddition">$0.00</span></div>
+      <div>House Pay: <span id="totalHousePay">$0.00</span></div>
+      <div>Commission Δ (45%): <span id="totalCommissionDiff">$0.00</span></div>
+      <div>Tech Assist Fee: <span id="totalAssistFee">$0.00</span></div>
+      <div>Tech Pay: <span id="totalTechPay">$0.00</span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>Service Provider</th>
+          <th>Service %</th>
+          <th>New Service Total</th>
+          <th>Tips</th>
+          <th>House Pay</th>
+          <th>Tip Fee %</th>
+          <th>Special Deduction</th>
+          <th>Special Addition</th>
+          <th>Tech Pay</th>
+          <th>Transactions</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody">
+        <tr><td colspan="10">No data yet.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="error" id="error" hidden></p>
+
+<script>
+  const currencyFmt = new Intl.NumberFormat(undefined,{style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:2});
+  const weekStartInput = document.getElementById('weekStart');
+  const authInput = document.getElementById('auth');
+  const loadBtn = document.getElementById('load');
+  const totalNewServiceEl = document.getElementById('totalNewService');
+  const totalNewServiceFormulaEl = document.getElementById('totalNewServiceFormula');
+  const totalGcRedemptionEl = document.getElementById('totalGcRedemption');
+  const totalTipsEl = document.getElementById('totalTips');
+  const totalTipFeeEl = document.getElementById('totalTipFee');
+  const totalSpecialDeductionEl = document.getElementById('totalSpecialDeduction');
+  const totalSpecialAdditionEl = document.getElementById('totalSpecialAddition');
+  const totalAssistFeeEl = document.getElementById('totalAssistFee');
+  const totalCommissionDiffEl = document.getElementById('totalCommissionDiff');
+  const totalHousePayEl = document.getElementById('totalHousePay');
+  const totalTechPayEl = document.getElementById('totalTechPay');
+  const tableBody = document.getElementById('tableBody');
+  const errorEl = document.getElementById('error');
+  const statusEl = document.getElementById('status');
+
+  function defaultWeekStart(){
+    const now = new Date();
+    const day = now.getDay();
+    now.setDate(now.getDate() - day);
+    return now.toISOString().slice(0,10);
+  }
+
+  function qp(name){return new URL(location.href).searchParams.get(name)}
+
+  (function init(){
+    const auth = qp('auth');
+    if(auth){ authInput.value = auth; }
+    weekStartInput.value = qp('weekStart') || defaultWeekStart();
+  })();
+
+  loadBtn.addEventListener('click', loadWeek);
+
+  async function loadWeek(){
+    const weekStart = weekStartInput.value;
+    const token = authInput.value.trim();
+
+    errorEl.hidden = true;
+    loadBtn.disabled = true;
+    statusEl.textContent = 'Loading…';
+
+    try{
+      const data = await fetchPaysheetData(weekStart, token);
+      renderWeek(data, token);
+    } catch(err){
+      console.error(err);
+      errorEl.hidden = false;
+      errorEl.textContent = err.message || 'Failed to load data.';
+      statusEl.textContent = 'Select a week to load provider pay totals.';
+    } finally {
+      loadBtn.disabled = false;
+    }
+  }
+
+  async function fetchPaysheetData(weekStart, token){
+    const params = new URLSearchParams();
+    if(weekStart) params.set('weekStart', weekStart);
+    const headers = token ? { 'x-auth-token': token } : {};
+    const res = await fetch(`/paysheet/data?${params.toString()}`, { headers });
+    if(!res.ok){
+      const body = await res.json().catch(()=>({}));
+      throw new Error(body.error || `Request failed (${res.status})`);
+    }
+    return res.json();
+  }
+
+  function renderWeek(data, token){
+    statusEl.textContent = `Week ${data.weekStart} – ${data.weekEnd}`;
+    const newServiceAggregate = data.totals.newServiceTotal ?? 0;
+    totalNewServiceEl.textContent = currencyFmt.format(newServiceAggregate);
+    totalNewServiceEl.classList.remove('positive-delta','negative-delta');
+    if(newServiceAggregate > 0){
+      totalNewServiceEl.classList.add('positive-delta');
+    } else if(newServiceAggregate < 0){
+      totalNewServiceEl.classList.add('negative-delta');
+    }
+    if(totalNewServiceFormulaEl){
+      const totalsFormula = data.totals?.formulaComponents || {};
+      const fmt = value => {
+        const numeric = Number(value || 0);
+        return currencyFmt.format(Math.abs(numeric) < 0.0005 ? 0 : numeric);
+      };
+      if(
+        totalsFormula &&
+        (totalsFormula.cashAmount !== undefined ||
+          totalsFormula.amountDue !== undefined ||
+          totalsFormula.cardAmount !== undefined ||
+          totalsFormula.giftCard !== undefined ||
+          totalsFormula.tip !== undefined)
+      ){
+        totalNewServiceFormulaEl.textContent = `(${fmt(totalsFormula.cashAmount)} - ${fmt(totalsFormula.amountDue)}) + ((${fmt(totalsFormula.cardAmount)} + ${fmt(totalsFormula.giftCard)}) - ${fmt(totalsFormula.tip)})`;
+      } else {
+        totalNewServiceFormulaEl.textContent = '';
+      }
+    }
+    totalGcRedemptionEl.textContent = currencyFmt.format(data.totals.totalGcRedemption || 0);
+    totalTipsEl.textContent = currencyFmt.format(data.totals.tips || 0);
+    totalTipFeeEl.textContent = currencyFmt.format(data.totals.tipFee || 0);
+    totalSpecialDeductionEl.textContent = currencyFmt.format(data.totals.specialDeduction || 0);
+    totalSpecialAdditionEl.textContent = currencyFmt.format(data.totals.specialAddition || 0);
+    totalAssistFeeEl.textContent = currencyFmt.format(data.totals.techAssistantFee || 0);
+    totalCommissionDiffEl.textContent = currencyFmt.format(data.totals.commissionDiff || 0);
+    totalHousePayEl.textContent = currencyFmt.format(data.totals.housePay || 0);
+    totalTechPayEl.textContent = currencyFmt.format(data.totals.techPay || 0);
+
+    tableBody.innerHTML = '';
+    if(!data.providers || !data.providers.length){
+      tableBody.innerHTML = '<tr><td colspan="10">No providers found for this week.</td></tr>';
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+
+    for(const row of data.providers){
+      const summaryRow = document.createElement('tr');
+      summaryRow.className = 'summary-row';
+
+      const providerCell = document.createElement('td');
+      providerCell.className = 'provider-cell';
+      const providerName = document.createElement('span');
+      providerName.className = 'provider-name';
+      providerName.textContent = row.providerName || row.providerId;
+      if(row.servicePercentage !== null && row.servicePercentage < 50 && row.commissionComparison){
+        providerName.classList.add('tip-highlight');
+        const comp = row.commissionComparison;
+        providerName.title = `Commission 5% Difference: ${currencyFmt.format(comp.deltaAmount)} | @${comp.actualPercent}% ${currencyFmt.format(comp.actualAmount)} | @${comp.baselinePercent}% ${currencyFmt.format(comp.baselineAmount)}`;
+      }
+      const providerId = document.createElement('span');
+      providerId.className = 'provider-id';
+      providerId.textContent = row.providerName ? row.providerId : '';
+      providerCell.appendChild(providerName);
+      if(providerId.textContent){
+        providerCell.appendChild(providerId);
+      }
+      summaryRow.appendChild(providerCell);
+
+      const serviceCell = document.createElement('td');
+      serviceCell.appendChild(createPercentageInput({
+        initialValue: row.servicePercentage,
+        providerId: row.providerId,
+        key: 'servicePercentage',
+        label: 'Service Percentage',
+        token
+      }));
+      summaryRow.appendChild(serviceCell);
+
+      const newServiceCell = document.createElement('td');
+      const providerNewService = row.newServiceTotal ?? 0;
+      newServiceCell.textContent = currencyFmt.format(providerNewService);
+      if(providerNewService > 0){
+        newServiceCell.classList.add('positive-delta');
+      } else if(providerNewService < 0){
+        newServiceCell.classList.add('negative-delta');
+      }
+      const fc = row.formulaComponents || {};
+      const normalize = value => (Math.abs(value) < 0.0005 ? 0 : value);
+      const cashAmountTotal = normalize(Number(fc.cashAmount || 0));
+      const amountDueTotal = normalize(Number(fc.amountDue || 0));
+      const cardAmountTotal = normalize(Number(fc.cardAmount || 0));
+      const gcAmountTotal = normalize(Number(fc.giftCard || 0));
+      const tipTotal = normalize(Number(fc.tip || 0));
+      const breakdown = document.createElement('div');
+      breakdown.className = 'cell-sub';
+      breakdown.textContent = `(${currencyFmt.format(cashAmountTotal)} - ${currencyFmt.format(amountDueTotal)}) + ((${currencyFmt.format(cardAmountTotal)} + ${currencyFmt.format(gcAmountTotal)}) - ${currencyFmt.format(tipTotal)})`;
+      newServiceCell.appendChild(breakdown);
+      summaryRow.appendChild(newServiceCell);
+
+      const tipsCell = document.createElement('td');
+      tipsCell.textContent = currencyFmt.format(row.tips || 0);
+      summaryRow.appendChild(tipsCell);
+
+      const housePayCell = document.createElement('td');
+      housePayCell.textContent = currencyFmt.format(row.housePay || 0);
+      if(row.tipFeeAmount){
+        const sub = document.createElement('div');
+        sub.className = 'cell-sub';
+        sub.textContent = `Includes tip fee ${currencyFmt.format(row.tipFeeAmount)}`;
+        housePayCell.appendChild(sub);
+      }
+      if(row.techAssistantFee){
+        const sub = document.createElement('div');
+        sub.className = 'cell-sub';
+        sub.textContent = `Includes tech assistants fee ${currencyFmt.format(row.techAssistantFee)}`;
+        housePayCell.appendChild(sub);
+      }
+      if(row.specialDeduction){
+        const sub = document.createElement('div');
+        sub.className = 'cell-sub';
+        sub.textContent = `Includes special deduction ${currencyFmt.format(row.specialDeduction)}`;
+        housePayCell.appendChild(sub);
+      }
+      if(row.specialAddition){
+        const sub = document.createElement('div');
+        sub.className = 'cell-sub';
+        sub.textContent = `Transfers special addition ${currencyFmt.format(row.specialAddition)} to tech`;
+        housePayCell.appendChild(sub);
+      }
+      summaryRow.appendChild(housePayCell);
+
+      const tipFeeCell = document.createElement('td');
+      tipFeeCell.appendChild(createPercentageInput({
+        initialValue: row.tipFeePercentage,
+        providerId: row.providerId,
+        key: 'tipFeePercentage',
+        label: 'Tip Fee Percentage',
+        token
+      }));
+      summaryRow.appendChild(tipFeeCell);
+
+      const deductionCell = document.createElement('td');
+      deductionCell.appendChild(createCurrencyInput({
+        initialValue: row.specialDeduction,
+        providerId: row.providerId,
+        key: 'specialDeduction',
+        label: 'Special Deduction',
+        token
+      }));
+      summaryRow.appendChild(deductionCell);
+
+      const additionCell = document.createElement('td');
+      additionCell.appendChild(createCurrencyInput({
+        initialValue: row.specialAddition,
+        providerId: row.providerId,
+        key: 'specialAddition',
+        label: 'Special Addition',
+        token
+      }));
+      summaryRow.appendChild(additionCell);
+
+      const techPayCell = document.createElement('td');
+      techPayCell.textContent = currencyFmt.format(row.techPay || 0);
+      if(row.techAssistantFee){
+        const sub = document.createElement('div');
+        sub.className = 'cell-sub';
+        sub.textContent = `- Tech assistants fee ${currencyFmt.format(row.techAssistantFee)}`;
+        techPayCell.appendChild(sub);
+      }
+      if(row.specialDeduction){
+        const sub = document.createElement('div');
+        sub.className = 'cell-sub';
+        sub.textContent = `- Special deduction ${currencyFmt.format(row.specialDeduction)}`;
+        techPayCell.appendChild(sub);
+      }
+      if(row.specialAddition){
+        const sub = document.createElement('div');
+        sub.className = 'cell-sub';
+        sub.textContent = `+ Special addition ${currencyFmt.format(row.specialAddition)}`;
+        techPayCell.appendChild(sub);
+      }
+      summaryRow.appendChild(techPayCell);
+
+      const transactionsCell = document.createElement('td');
+      const count = Array.isArray(row.transactions) ? row.transactions.length : 0;
+      const toggleBtn = document.createElement('button');
+      toggleBtn.type = 'button';
+      toggleBtn.className = 'toggle-btn';
+      toggleBtn.textContent = count ? `Show (${count})` : 'Show (0)';
+      toggleBtn.setAttribute('aria-expanded', 'false');
+      transactionsCell.appendChild(toggleBtn);
+      summaryRow.appendChild(transactionsCell);
+
+      fragment.appendChild(summaryRow);
+
+      const detailRow = document.createElement('tr');
+      detailRow.className = 'detail-row hidden';
+      const detailCell = document.createElement('td');
+      detailCell.colSpan = 10;
+
+      if(!count){
+        detailCell.textContent = 'No transactions for this provider within the selected week.';
+      } else {
+        const container = document.createElement('div');
+        container.className = 'detail-container';
+        const detailTable = document.createElement('table');
+        detailTable.className = 'transactions-table';
+
+        const detailHead = document.createElement('thead');
+        detailHead.innerHTML = '<tr><th>Date & Time</th><th>Cash Amount</th><th>Amount Due</th><th>Card Amount</th><th>Gift Card</th><th>Tip</th><th>Service Total</th><th>Item Sold</th></tr>';
+        detailTable.appendChild(detailHead);
+
+        const detailBody = document.createElement('tbody');
+        for(const tx of row.transactions){
+          const tr = document.createElement('tr');
+          const excluded = !!tx.excludedFromAssistantFee;
+          if(excluded){
+            tr.classList.add('excluded-transaction');
+          }
+          const tsCell = document.createElement('td');
+          tsCell.textContent = formatTransactionTime(tx.timestamp);
+          tr.appendChild(tsCell);
+
+          const cashAmountCell = document.createElement('td');
+          const cashAmountValue = Number(tx.cashAmount || 0);
+          cashAmountCell.textContent = currencyFmt.format(cashAmountValue);
+          tr.appendChild(cashAmountCell);
+
+          const amountDueCell = document.createElement('td');
+          const amountDueValue = Number(tx.amountDue || 0);
+          amountDueCell.textContent = currencyFmt.format(amountDueValue);
+          tr.appendChild(amountDueCell);
+
+          const cardAmountCell = document.createElement('td');
+          const cardAmountValue = Number(tx.ccAmount || 0);
+          cardAmountCell.textContent = currencyFmt.format(cardAmountValue);
+          tr.appendChild(cardAmountCell);
+
+          const gcCell = document.createElement('td');
+          const gcValue = Number(tx.gcRedemption || 0);
+          gcCell.textContent = currencyFmt.format(gcValue);
+          tr.appendChild(gcCell);
+
+          const tipCell = document.createElement('td');
+          const tipValue = Number(tx.tip || 0);
+          tipCell.textContent = currencyFmt.format(tipValue);
+          tr.appendChild(tipCell);
+
+          const newServiceCell = document.createElement('td');
+          const newServiceValue = Number(tx.newServiceValue || 0);
+          const cashMinusDue = cashAmountValue - amountDueValue;
+          const cardPlusGc = cardAmountValue + gcValue;
+          const cardLessTip = cardPlusGc - tipValue;
+          const normalize = value => (Math.abs(value) < 0.0005 ? 0 : value);
+          newServiceCell.textContent = currencyFmt.format(normalize(newServiceValue));
+          if(newServiceValue !== 0){
+            newServiceCell.classList.add(newServiceValue > 0 ? 'positive-delta' : 'negative-delta');
+          }
+          const formula = document.createElement('div');
+          formula.className = 'cell-sub';
+          formula.textContent = `(${currencyFmt.format(normalize(cashAmountValue))} - ${currencyFmt.format(normalize(amountDueValue))}) + ((${currencyFmt.format(normalize(cardAmountValue))} + ${currencyFmt.format(normalize(gcValue))}) - ${currencyFmt.format(normalize(tipValue))})`;
+          const result = document.createElement('div');
+          result.className = 'cell-sub';
+          result.textContent = `= ${currencyFmt.format(normalize(cashMinusDue))} + ${currencyFmt.format(normalize(cardLessTip))} = ${currencyFmt.format(normalize(newServiceValue))}`;
+          newServiceCell.appendChild(formula);
+          newServiceCell.appendChild(result);
+          tr.appendChild(newServiceCell);
+
+          const itemCell = document.createElement('td');
+          itemCell.className = 'item-cell';
+          const displayItem = (tx.itemSold && tx.itemSold.trim()) ? tx.itemSold : tx.eventId;
+          const itemLabel = document.createElement('span');
+          itemLabel.className = 'tx-item-label';
+          itemLabel.textContent = displayItem || '—';
+          if(tx.eventId){
+            itemCell.title = tx.eventId;
+          }
+          itemCell.appendChild(itemLabel);
+          if(excluded){
+            const badge = document.createElement('div');
+            badge.className = 'tx-badge';
+            badge.textContent = 'Excluded';
+            itemCell.appendChild(badge);
+          }
+          tr.appendChild(itemCell);
+
+          detailBody.appendChild(tr);
+        }
+        detailTable.appendChild(detailBody);
+        container.appendChild(detailTable);
+        detailCell.appendChild(container);
+      }
+
+      detailRow.appendChild(detailCell);
+      fragment.appendChild(detailRow);
+
+      toggleBtn.addEventListener('click', () => {
+        const isHidden = detailRow.classList.contains('hidden');
+        if(isHidden){
+          detailRow.classList.remove('hidden');
+          toggleBtn.setAttribute('aria-expanded', 'true');
+          toggleBtn.textContent = `Hide (${count})`;
+        } else {
+          detailRow.classList.add('hidden');
+          toggleBtn.setAttribute('aria-expanded', 'false');
+          toggleBtn.textContent = count ? `Show (${count})` : 'Show (0)';
+        }
+      });
+    }
+
+    tableBody.appendChild(fragment);
+  }
+
+  async function handleConfigChange(input, providerId, token){
+    const key = input.dataset.configKey;
+    const label = input.dataset.configLabel || 'Value';
+    const type = input.dataset.configType || 'percentage';
+    const raw = (input.value || '').trim();
+    const previous = input.dataset.applied || '';
+
+    if(!providerId){
+      errorEl.hidden = false;
+      errorEl.textContent = 'Missing provider identifier for this row.';
+      revertInput(input, previous);
+      return;
+    }
+
+    if(!key){
+      errorEl.hidden = false;
+      errorEl.textContent = 'Unable to determine which value to update.';
+      revertInput(input, previous);
+      return;
+    }
+
+    const normalized = type === 'currency' ? normalizeCurrency(raw) : normalizePercentage(raw);
+    if(normalized.error){
+      errorEl.hidden = false;
+      errorEl.textContent = normalized.error;
+      revertInput(input, previous);
+      return;
+    }
+
+    const payloadValue = normalized.value;
+    const nextApplied = payloadValue === null
+      ? ''
+      : type === 'currency'
+        ? payloadValue.toFixed(2)
+        : String(payloadValue);
+    if(nextApplied === previous){
+      return;
+    }
+
+    errorEl.hidden = true;
+    statusEl.textContent = `Saving ${label.toLowerCase()}…`;
+    input.disabled = true;
+
+    try{
+      await saveProviderConfig(providerId, { [key]: payloadValue }, token);
+      const data = await fetchPaysheetData(weekStartInput.value, token);
+      renderWeek(data, token);
+    } catch(err){
+      console.error(err);
+      errorEl.hidden = false;
+      errorEl.textContent = err.message || `Failed to save ${label.toLowerCase()}.`;
+      revertInput(input, previous);
+      statusEl.textContent = `${label} update failed.`;
+    } finally {
+      input.disabled = false;
+    }
+  }
+
+  async function saveProviderConfig(providerId, payload, token){
+    const headers = { 'Content-Type': 'application/json' };
+    if(token){
+      headers['x-auth-token'] = token;
+    }
+
+    const res = await fetch('/paysheet/percentage', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ providerId, ...payload }),
+    });
+
+    if(!res.ok){
+      const body = await res.json().catch(()=>({}));
+      throw new Error(body.error || `Request failed (${res.status})`);
+    }
+
+    return res.json();
+  }
+
+  function normalizePercentage(raw){
+    if(raw === ''){
+      return { value: null };
+    }
+
+    const numeric = Number(raw);
+    if(!Number.isFinite(numeric)){
+      return { error: 'Percentage must be a number.' };
+    }
+
+    if(numeric < 0 || numeric > 100){
+      return { error: 'Percentage must be between 0 and 100.' };
+    }
+
+    const rounded = Math.round(numeric * 100) / 100;
+    return { value: rounded };
+  }
+
+  function normalizeCurrency(raw){
+    if(raw === ''){
+      return { value: null };
+    }
+
+    const cleaned = raw.replace(/[$,\s]/g, '');
+    if(cleaned === ''){
+      return { value: null };
+    }
+
+    const numeric = Number(cleaned);
+    if(!Number.isFinite(numeric)){
+      return { error: 'Amount must be a number.' };
+    }
+
+    if(numeric < 0){
+      return { error: 'Amount must be zero or positive.' };
+    }
+
+    const rounded = Math.round(numeric * 100) / 100;
+    return { value: rounded };
+  }
+
+  function revertInput(input, previous){
+    input.value = previous;
+    input.dataset.applied = previous;
+  }
+
+  function createPercentageInput({ initialValue, providerId, key, label, token }){
+    const wrapper = document.createElement('div');
+    wrapper.className = 'config-input';
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = '0';
+    input.max = '100';
+    input.step = '0.1';
+    input.placeholder = '0';
+    input.className = 'percentage-input';
+    const valueString = initialValue === null || initialValue === undefined ? '' : String(initialValue);
+    input.value = valueString;
+    input.dataset.providerId = providerId;
+    input.dataset.applied = valueString;
+    input.dataset.configKey = key;
+    input.dataset.configLabel = label;
+    input.dataset.configType = 'percentage';
+    input.addEventListener('change', () => handleConfigChange(input, providerId, token));
+    wrapper.appendChild(input);
+    const suffix = document.createElement('span');
+    suffix.className = 'affix';
+    suffix.textContent = '%';
+    wrapper.appendChild(suffix);
+    return wrapper;
+  }
+
+  function createCurrencyInput({ initialValue, providerId, key, label, token }){
+    const wrapper = document.createElement('div');
+    wrapper.className = 'config-input';
+    const prefix = document.createElement('span');
+    prefix.className = 'affix';
+    prefix.textContent = '$';
+    wrapper.appendChild(prefix);
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = '0';
+    input.step = '0.01';
+    input.placeholder = '0.00';
+    input.inputMode = 'decimal';
+    const hasValue = typeof initialValue === 'number' && !Number.isNaN(initialValue) && initialValue !== 0;
+    const valueString = hasValue ? initialValue.toFixed(2) : '';
+    input.value = valueString;
+    input.dataset.providerId = providerId;
+    input.dataset.applied = valueString;
+    input.dataset.configKey = key;
+    input.dataset.configLabel = label;
+    input.dataset.configType = 'currency';
+    input.addEventListener('change', () => handleConfigChange(input, providerId, token));
+    wrapper.appendChild(input);
+    return wrapper;
+  }
+
+  function formatTransactionTime(value){
+    if(!value){
+      return '—';
+    }
+
+    const date = new Date(value);
+    if(Number.isNaN(date.getTime())){
+      return value;
+    }
+
+    return date.toLocaleString();
+  }
+</script>
+</body>
+</html>
