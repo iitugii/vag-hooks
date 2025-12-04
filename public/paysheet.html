@@ -69,6 +69,7 @@
       <div>Tips: <span id="totalTips">$0.00</span></div>
       <div>Tip Fee: <span id="totalTipFee">$0.00</span></div>
       <div>Special Deductions: <span id="totalSpecialDeduction">$0.00</span></div>
+      <div>Special Additions: <span id="totalSpecialAddition">$0.00</span></div>
       <div>House Pay: <span id="totalHousePay">$0.00</span></div>
       <div>Commission Δ (45%): <span id="totalCommissionDiff">$0.00</span></div>
       <div>Tech Assist Fee: <span id="totalAssistFee">$0.00</span></div>
@@ -87,12 +88,13 @@
           <th>House Pay</th>
           <th>Tip Fee %</th>
           <th>Special Deduction</th>
+          <th>Special Addition</th>
           <th>Tech Pay</th>
           <th>Transactions</th>
         </tr>
       </thead>
       <tbody id="tableBody">
-        <tr><td colspan="9">No data yet.</td></tr>
+        <tr><td colspan="10">No data yet.</td></tr>
       </tbody>
     </table>
   </div>
@@ -110,6 +112,7 @@
   const totalTipsEl = document.getElementById('totalTips');
   const totalTipFeeEl = document.getElementById('totalTipFee');
   const totalSpecialDeductionEl = document.getElementById('totalSpecialDeduction');
+  const totalSpecialAdditionEl = document.getElementById('totalSpecialAddition');
   const totalAssistFeeEl = document.getElementById('totalAssistFee');
   const totalCommissionDiffEl = document.getElementById('totalCommissionDiff');
   const totalHousePayEl = document.getElementById('totalHousePay');
@@ -201,6 +204,7 @@
     totalTipsEl.textContent = currencyFmt.format(data.totals.tips || 0);
     totalTipFeeEl.textContent = currencyFmt.format(data.totals.tipFee || 0);
     totalSpecialDeductionEl.textContent = currencyFmt.format(data.totals.specialDeduction || 0);
+    totalSpecialAdditionEl.textContent = currencyFmt.format(data.totals.specialAddition || 0);
     totalAssistFeeEl.textContent = currencyFmt.format(data.totals.techAssistantFee || 0);
     totalCommissionDiffEl.textContent = currencyFmt.format(data.totals.commissionDiff || 0);
     totalHousePayEl.textContent = currencyFmt.format(data.totals.housePay || 0);
@@ -208,7 +212,7 @@
 
     tableBody.innerHTML = '';
     if(!data.providers || !data.providers.length){
-      tableBody.innerHTML = '<tr><td colspan="9">No providers found for this week.</td></tr>';
+      tableBody.innerHTML = '<tr><td colspan="10">No providers found for this week.</td></tr>';
       return;
     }
 
@@ -292,6 +296,12 @@
         sub.textContent = `Includes special deduction ${currencyFmt.format(row.specialDeduction)}`;
         housePayCell.appendChild(sub);
       }
+      if(row.specialAddition){
+        const sub = document.createElement('div');
+        sub.className = 'cell-sub';
+        sub.textContent = `Transfers special addition ${currencyFmt.format(row.specialAddition)} to tech`;
+        housePayCell.appendChild(sub);
+      }
       summaryRow.appendChild(housePayCell);
 
       const tipFeeCell = document.createElement('td');
@@ -314,6 +324,16 @@
       }));
       summaryRow.appendChild(deductionCell);
 
+      const additionCell = document.createElement('td');
+      additionCell.appendChild(createCurrencyInput({
+        initialValue: row.specialAddition,
+        providerId: row.providerId,
+        key: 'specialAddition',
+        label: 'Special Addition',
+        token
+      }));
+      summaryRow.appendChild(additionCell);
+
       const techPayCell = document.createElement('td');
       techPayCell.textContent = currencyFmt.format(row.techPay || 0);
       if(row.techAssistantFee){
@@ -326,6 +346,12 @@
         const sub = document.createElement('div');
         sub.className = 'cell-sub';
         sub.textContent = `- Special deduction ${currencyFmt.format(row.specialDeduction)}`;
+        techPayCell.appendChild(sub);
+      }
+      if(row.specialAddition){
+        const sub = document.createElement('div');
+        sub.className = 'cell-sub';
+        sub.textContent = `+ Special addition ${currencyFmt.format(row.specialAddition)}`;
         techPayCell.appendChild(sub);
       }
       summaryRow.appendChild(techPayCell);
@@ -345,7 +371,7 @@
       const detailRow = document.createElement('tr');
       detailRow.className = 'detail-row hidden';
       const detailCell = document.createElement('td');
-      detailCell.colSpan = 9;
+      detailCell.colSpan = 10;
 
       if(!count){
         detailCell.textContent = 'No transactions for this provider within the selected week.';
