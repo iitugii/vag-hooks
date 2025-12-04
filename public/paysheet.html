@@ -83,13 +83,13 @@
         <tr>
           <th>Service Provider</th>
           <th>Service %</th>
+          <th>Tech Pay</th>
           <th>New Service Total</th>
           <th>Tips</th>
           <th>House Pay</th>
           <th>Tip Fee %</th>
           <th>Special Deduction</th>
           <th>Special Addition</th>
-          <th>Tech Pay</th>
           <th>Transactions</th>
         </tr>
       </thead>
@@ -242,14 +242,34 @@
       summaryRow.appendChild(providerCell);
 
       const serviceCell = document.createElement('td');
-      serviceCell.appendChild(createPercentageInput({
-        initialValue: row.servicePercentage,
-        providerId: row.providerId,
-        key: 'servicePercentage',
-        label: 'Service Percentage',
-        token
-      }));
+      const servicePctValue = Number(row.servicePercentage);
+      const servicePct = Number.isFinite(servicePctValue)
+        ? `${servicePctValue % 1 === 0 ? servicePctValue.toFixed(0) : servicePctValue.toFixed(2)}%`
+        : '—';
+      serviceCell.textContent = servicePct;
       summaryRow.appendChild(serviceCell);
+
+      const techPayCell = document.createElement('td');
+      techPayCell.textContent = currencyFmt.format(row.techPay || 0);
+      if(row.techAssistantFee){
+        const sub = document.createElement('div');
+        sub.className = 'cell-sub';
+        sub.textContent = `- Tech assistants fee ${currencyFmt.format(row.techAssistantFee)}`;
+        techPayCell.appendChild(sub);
+      }
+      if(row.specialDeduction){
+        const sub = document.createElement('div');
+        sub.className = 'cell-sub';
+        sub.textContent = `- Special deduction ${currencyFmt.format(row.specialDeduction)}`;
+        techPayCell.appendChild(sub);
+      }
+      if(row.specialAddition){
+        const sub = document.createElement('div');
+        sub.className = 'cell-sub';
+        sub.textContent = `+ Special addition ${currencyFmt.format(row.specialAddition)}`;
+        techPayCell.appendChild(sub);
+      }
+      summaryRow.appendChild(techPayCell);
 
       const newServiceCell = document.createElement('td');
       const providerNewService = row.newServiceTotal ?? 0;
@@ -334,27 +354,6 @@
       }));
       summaryRow.appendChild(additionCell);
 
-      const techPayCell = document.createElement('td');
-      techPayCell.textContent = currencyFmt.format(row.techPay || 0);
-      if(row.techAssistantFee){
-        const sub = document.createElement('div');
-        sub.className = 'cell-sub';
-        sub.textContent = `- Tech assistants fee ${currencyFmt.format(row.techAssistantFee)}`;
-        techPayCell.appendChild(sub);
-      }
-      if(row.specialDeduction){
-        const sub = document.createElement('div');
-        sub.className = 'cell-sub';
-        sub.textContent = `- Special deduction ${currencyFmt.format(row.specialDeduction)}`;
-        techPayCell.appendChild(sub);
-      }
-      if(row.specialAddition){
-        const sub = document.createElement('div');
-        sub.className = 'cell-sub';
-        sub.textContent = `+ Special addition ${currencyFmt.format(row.specialAddition)}`;
-        techPayCell.appendChild(sub);
-      }
-      summaryRow.appendChild(techPayCell);
 
       const transactionsCell = document.createElement('td');
       const count = Array.isArray(row.transactions) ? row.transactions.length : 0;
@@ -492,6 +491,7 @@
     const type = input.dataset.configType || 'percentage';
     const raw = (input.value || '').trim();
     const previous = input.dataset.applied || '';
+    const weekStart = (weekStartInput.value || '').trim();
 
     if(!providerId){
       errorEl.hidden = false;
@@ -503,6 +503,13 @@
     if(!key){
       errorEl.hidden = false;
       errorEl.textContent = 'Unable to determine which value to update.';
+      revertInput(input, previous);
+      return;
+    }
+
+    if(!weekStart){
+      errorEl.hidden = false;
+      errorEl.textContent = 'Select a week before saving provider settings.';
       revertInput(input, previous);
       return;
     }
@@ -530,7 +537,7 @@
     input.disabled = true;
 
     try{
-      await saveProviderConfig(providerId, { [key]: payloadValue }, token);
+      await saveProviderConfig(providerId, { [key]: payloadValue }, token, weekStart);
       const data = await fetchPaysheetData(weekStartInput.value, token);
       renderWeek(data, token);
     } catch(err){
@@ -543,8 +550,7 @@
       input.disabled = false;
     }
   }
-
-  async function saveProviderConfig(providerId, payload, token){
+  async function saveProviderConfig(providerId, payload, token, weekStart){
     const headers = { 'Content-Type': 'application/json' };
     if(token){
       headers['x-auth-token'] = token;
@@ -553,7 +559,7 @@
     const res = await fetch('/paysheet/percentage', {
       method: 'POST',
       headers,
-      body: JSON.stringify({ providerId, ...payload }),
+      body: JSON.stringify({ providerId, weekStart, ...payload }),
     });
 
     if(!res.ok){
