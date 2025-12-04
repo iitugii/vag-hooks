@@ -2,7 +2,7 @@ import path from "path";
 import { Request, Response, Router } from "express";
 
 import { prisma } from "../lib/prisma";
-import { lookupProviderName } from "./employees";
+import { lookupProviderName, providerServicePercentages } from "./employees";
 import { excludedServiceSet } from "./excludeservice";
 
 const router = Router();
@@ -213,10 +213,10 @@ router.get("/data", async (req: Request, res: Response) => {
         SUM(COALESCE(d.cc_amount_raw, 0) + COALESCE(d.gc_redemption_raw, 0) - COALESCE(d.tip_amount, 0)) AS total_cc_delta,
         SUM(COALESCE(d.gc_redemption_raw, 0)) AS total_gc_redemption,
         SUM(d.tip_amount) AS total_tips,
-        MAX(pp."servicePercentage") AS service_percentage,
-        MAX(pp."tipFeePercentage") AS tip_fee_percentage,
-        MAX(pp."specialDeduction") AS special_deduction,
-        MAX(pp."specialAddition") AS special_addition,
+        MAX(pwc."servicePercentage") AS service_percentage,
+        MAX(pwc."tipFeePercentage") AS tip_fee_percentage,
+        MAX(pwc."specialDeduction") AS special_deduction,
+        MAX(pwc."specialAddition") AS special_addition,
         COALESCE(
           json_agg(
             json_build_object(
@@ -235,7 +235,9 @@ router.get("/data", async (req: Request, res: Response) => {
           '[]'::json
         ) AS transactions
       FROM deduped d
-      LEFT JOIN "ProviderPercentage" pp ON pp."providerId" = d.provider_id
+      LEFT JOIN "ProviderWeekConfig" pwc
+        ON pwc."providerId" = d.provider_id
+       AND pwc."weekStart" = ${weekStart}::date
       GROUP BY d.provider_id
       ORDER BY d.provider_id;
     `;
@@ -309,10 +311,19 @@ router.get("/data", async (req: Request, res: Response) => {
         ((formulaComponents.cardAmount + formulaComponents.giftCard) - formulaComponents.tip);
       const totalNewService = roundCurrency(totalNewServiceRaw);
 
-      const servicePercentage =
-        row.service_percentage === null || row.service_percentage === undefined
-          ? null
-          : Number(row.service_percentage);
+      let servicePercentage: number | null = null;
+      if (row.service_percentage !== null && row.service_percentage !== undefined) {
+        const numeric = Number(row.service_percentage);
+        if (Number.isFinite(numeric)) {
+          servicePercentage = numeric;
+        }
+      }
+      if (servicePercentage === null) {
+        const fallback = providerServicePercentages[providerId];
+        if (typeof fallback === "number" && Number.isFinite(fallback)) {
+          servicePercentage = fallback;
+        }
+      }
 
       const tipFeePercentage =
         row.tip_fee_percentage === null || row.tip_fee_percentage === undefined
@@ -539,6 +550,19 @@ router.post("/percentage", async (req: Request, res: Response) => {
     }
 
     const body = req.body ?? {};
+    const weekStartRaw =
+      typeof body.weekStart === "string" ? body.weekStart.trim() : "";
+    if (!weekStartRaw) {
+      return res.status(400).json({ error: "weekStart is required" });
+    }
+
+    const parsedWeekStart = parseDate(weekStartRaw);
+    if (!parsedWeekStart) {
+      return res.status(400).json({ error: "Invalid weekStart; expected YYYY-MM-DD" });
+    }
+
+    const normalizedWeekStart = startOfWeek(parsedWeekStart);
+
     const hasServiceField =
       Object.prototype.hasOwnProperty.call(body, "servicePercentage") ||
       Object.prototype.hasOwnProperty.call(body, "percentage");
@@ -596,7 +620,14 @@ router.post("/percentage", async (req: Request, res: Response) => {
       }
     }
 
-    const existing = await prisma.providerPercentage.findUnique({ where: { providerId } });
+    const existing = await prisma.providerWeekConfig.findUnique({
+      where: {
+        providerId_weekStart: {
+          providerId,
+          weekStart: normalizedWeekStart,
+        },
+      },
+    });
 
     const effectiveService =
       hasServiceField ? serviceValue ?? null : existing?.servicePercentage ?? null;
@@ -606,7 +637,7 @@ router.post("/percentage", async (req: Request, res: Response) => {
       : existing?.specialDeduction ?? null;
     const effectiveSpecialAddition = hasAdditionField
       ? specialAdditionValue ?? null
-      : (existing as any)?.specialAddition ?? null;
+      : existing?.specialAddition ?? null;
 
     if (
       effectiveService === null &&
@@ -615,12 +646,20 @@ router.post("/percentage", async (req: Request, res: Response) => {
       effectiveSpecialAddition === null
     ) {
       if (existing) {
-        await prisma.providerPercentage
-          .delete({ where: { providerId } })
+        await prisma.providerWeekConfig
+          .delete({
+            where: {
+              providerId_weekStart: {
+                providerId,
+                weekStart: normalizedWeekStart,
+              },
+            },
+          })
           .catch(() => undefined);
       }
       return res.json({
         providerId,
+        weekStart: formatDate(normalizedWeekStart),
         servicePercentage: null,
         tipFeePercentage: null,
         specialDeduction: null,
@@ -637,24 +676,31 @@ router.post("/percentage", async (req: Request, res: Response) => {
 
     const createData: any = {
       providerId,
+      weekStart: normalizedWeekStart,
       servicePercentage: effectiveService,
       tipFeePercentage: effectiveTipFee,
       specialDeduction: effectiveSpecialDeduction,
       specialAddition: effectiveSpecialAddition,
     };
 
-    const record = await prisma.providerPercentage.upsert({
-      where: { providerId },
+    const record = await prisma.providerWeekConfig.upsert({
+      where: {
+        providerId_weekStart: {
+          providerId,
+          weekStart: normalizedWeekStart,
+        },
+      },
       update: updateData,
       create: createData,
     });
 
     res.json({
       providerId: record.providerId,
+      weekStart: formatDate(normalizedWeekStart),
       servicePercentage: record.servicePercentage,
       tipFeePercentage: record.tipFeePercentage,
       specialDeduction: record.specialDeduction,
-      specialAddition: (record as any).specialAddition ?? null,
+      specialAddition: record.specialAddition ?? null,
     });
   } catch (err: any) {
     console.error("/paysheet/percentage failed", err);
