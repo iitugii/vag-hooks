@@ -23,7 +23,7 @@ export const providerDirectory: ProviderDirectory = {
 };
 
 export const providerServicePercentages: Record<string, number> = {
-    "0U~8qaluNm4nlBHS1lX4Sg==": 45,
+    "0U~8qaluNm4nlBHS1lX4Sg==": 50,
     "2~XMU4-eycP4LHBPEzpyVQ==": 45,
     "DYOsnZF92isbHl0aVQtB5w==": 45,
     "hWJIChYtRdsuqlnAeIpqfA==": 50,
@@ -32,15 +32,16 @@ export const providerServicePercentages: Record<string, number> = {
     "G~vAH-ywuaMTU8U-mQSPSw==": 45,
     "RL~9TokljBGmTZJrF~OONQ==": 45,
     "VJYp1jmJ990M8rSgmEKuCg==": 45,
-    "QAAiKbzzli94LGrnJ3GX0Q==": 45,
+    "QAAiKbzzli94LGrnJ3GX0Q==": 50,
     "ygttmkB0kqajnP3G9VFFCA==": 45,
     "u41~oI~Elac3QmDg0IE3LQ==": 50,
-    "1f0-pADxzjo5oCJfQvqwEg==": 50,
-    "XYSdsoZNLpg~vz42OYwQPg==": 45,
-    "qloWTWPGZbaXLm62UEZezw==": 45,
-    "8m0Pi9tJgReoyUxrRqq-Nw==": 50,
+    "1f0-pADxzjo5oCJfQvqwEg==": 45,
+    "XYSdsoZNLpg~vz42OYwQPg==": 50,
+    "qloWTWPGZbaXLm62UEZezw==": 50,
+    "8m0Pi9tJgReoyUxrRqq-Nw==": 45,
     "iGdlKrBiZNl~zAXcKYHAtg==": 45,
-    "lLHKiHNGeN0d-CmqhnUIzg==": 45
+    "lLHKiHNGeN0d-CmqhnUIzg==": 45,
+    "cOuMhKYYXwez7hlBoLpnPg==": 45
 };
 
 export function lookupProviderName(providerId: string): string | undefined {
