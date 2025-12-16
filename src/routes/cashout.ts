@@ -79,10 +79,61 @@ router.get("/data", async (req: Request, res: Response) => {
 
           /* change due back to customer */
           COALESCE(
+            /* explicit cash change fields */
+            (payload->>'cashChangeDue')::numeric,
+            (payload->'payload'->>'cashChangeDue')::numeric,
+            (payload->>'cashChange')::numeric,
+            (payload->'payload'->>'cashChange')::numeric,
+            /* generic change fields (only if present) */
             (payload->>'changeDue')::numeric,
             (payload->'payload'->>'changeDue')::numeric,
             (payload->>'change')::numeric,
             (payload->'payload'->>'change')::numeric,
+            /* sum change from tenders/payments arrays for CASH tenders only */
+            (SELECT SUM(
+              COALESCE(
+                (t->>'change')::numeric,
+                (t->>'changeDue')::numeric,
+                0
+              )
+            )
+            FROM jsonb_array_elements(payload->'tenders') t
+            WHERE LOWER(COALESCE(t->>'tenderType', t->>'type', t->>'method', '')) IN (
+              'cash', 'cash payment', 'cashpayment'
+            )),
+            (SELECT SUM(
+              COALESCE(
+                (t->>'change')::numeric,
+                (t->>'changeDue')::numeric,
+                0
+              )
+            )
+            FROM jsonb_array_elements(payload->'payload'->'tenders') t
+            WHERE LOWER(COALESCE(t->>'tenderType', t->>'type', t->>'method', '')) IN (
+              'cash', 'cash payment', 'cashpayment'
+            )),
+            (SELECT SUM(
+              COALESCE(
+                (p->>'change')::numeric,
+                (p->>'changeDue')::numeric,
+                0
+              )
+            )
+            FROM jsonb_array_elements(payload->'payments') p
+            WHERE LOWER(COALESCE(p->>'tenderType', p->>'type', p->>'method', '')) IN (
+              'cash', 'cash payment', 'cashpayment'
+            )),
+            (SELECT SUM(
+              COALESCE(
+                (p->>'change')::numeric,
+                (p->>'changeDue')::numeric,
+                0
+              )
+            )
+            FROM jsonb_array_elements(payload->'payload'->'payments') p
+            WHERE LOWER(COALESCE(p->>'tenderType', p->>'type', p->>'method', '')) IN (
+              'cash', 'cash payment', 'cashpayment'
+            )),
             0
           )::double precision AS change_due,
 
@@ -190,7 +241,7 @@ router.get("/data", async (req: Request, res: Response) => {
         /* green: cash collected (cash tendered minus change due) */
         SUM(GREATEST(cash_tender - change_due, 0))::double precision AS cash_total,
 
-        /* blue: total sold (all tendered minus change) */
+        /* blue: total sold (tendered; do NOT subtract change from non-cash tenders) */
         SUM(GREATEST(tender_total - change_due, 0))::double precision AS sold_total,
 
         COUNT(DISTINCT transaction_id) AS client_count,

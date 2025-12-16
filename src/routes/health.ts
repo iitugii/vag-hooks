@@ -124,10 +124,58 @@ router.get("/cashout-debug", async (req, res) => {
 
           /* change due back to customer */
           COALESCE(
+            (payload->>'cashChangeDue')::numeric,
+            (payload->'payload'->>'cashChangeDue')::numeric,
+            (payload->>'cashChange')::numeric,
+            (payload->'payload'->>'cashChange')::numeric,
             (payload->>'changeDue')::numeric,
             (payload->'payload'->>'changeDue')::numeric,
             (payload->>'change')::numeric,
             (payload->'payload'->>'change')::numeric,
+            (SELECT SUM(
+              COALESCE(
+                (t->>'change')::numeric,
+                (t->>'changeDue')::numeric,
+                0
+              )
+            )
+            FROM jsonb_array_elements(payload->'tenders') t
+            WHERE LOWER(COALESCE(t->>'tenderType', t->>'type', t->>'method', '')) IN (
+              'cash', 'cash payment', 'cashpayment'
+            )),
+            (SELECT SUM(
+              COALESCE(
+                (t->>'change')::numeric,
+                (t->>'changeDue')::numeric,
+                0
+              )
+            )
+            FROM jsonb_array_elements(payload->'payload'->'tenders') t
+            WHERE LOWER(COALESCE(t->>'tenderType', t->>'type', t->>'method', '')) IN (
+              'cash', 'cash payment', 'cashpayment'
+            )),
+            (SELECT SUM(
+              COALESCE(
+                (p->>'change')::numeric,
+                (p->>'changeDue')::numeric,
+                0
+              )
+            )
+            FROM jsonb_array_elements(payload->'payments') p
+            WHERE LOWER(COALESCE(p->>'tenderType', p->>'type', p->>'method', '')) IN (
+              'cash', 'cash payment', 'cashpayment'
+            )),
+            (SELECT SUM(
+              COALESCE(
+                (p->>'change')::numeric,
+                (p->>'changeDue')::numeric,
+                0
+              )
+            )
+            FROM jsonb_array_elements(payload->'payload'->'payments') p
+            WHERE LOWER(COALESCE(p->>'tenderType', p->>'type', p->>'method', '')) IN (
+              'cash', 'cash payment', 'cashpayment'
+            )),
             0
           )::double precision AS change_due,
 
