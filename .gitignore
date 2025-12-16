@@ -1,3 +1,9 @@
+node_modules/
+dist/
+.env
+
+# Local backfill data files (keep out of git)
+src/csv/dec2025/
 node_modules
 dist
 .env
