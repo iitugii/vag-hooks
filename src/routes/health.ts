@@ -264,8 +264,8 @@ router.get("/cashout-debug", async (req, res) => {
         SUM(card_tender)::double precision AS sum_card_tender,
         SUM(change_due)::double precision AS sum_change_due,
         SUM(tender_total)::double precision AS sum_tender_total,
-        SUM(GREATEST(cash_tender, 0))::double precision AS cash_total,
-            SUM(GREATEST(tender_total, 0))::double precision AS sold_total
+            SUM(GREATEST(cash_tender, 0))::double precision AS cash_total,
+            SUM(GREATEST(tender_total - change_due, 0))::double precision AS sold_total
       FROM normalized;
     `;
 

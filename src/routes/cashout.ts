@@ -241,8 +241,8 @@ router.get("/data", async (req: Request, res: Response) => {
         /* green: cash tendered (do not subtract change) */
         SUM(GREATEST(cash_tender, 0))::double precision AS cash_total,
 
-        /* blue: total sold (total tendered; do not subtract change) */
-        SUM(GREATEST(tender_total, 0))::double precision AS sold_total,
+        /* blue: total sold (tendered total minus change due) */
+        SUM(GREATEST(tender_total - change_due, 0))::double precision AS sold_total,
 
         COUNT(DISTINCT transaction_id) AS client_count,
         SUM(service_qty)::double precision AS service_count
