@@ -84,6 +84,11 @@ router.get("/data", async (req: Request, res: Response) => {
             (payload->'payload'->>'cashChangeDue')::numeric,
             (payload->>'cashChange')::numeric,
             (payload->'payload'->>'cashChange')::numeric,
+            /* generic change fields (restored) */
+            (payload->>'changeDue')::numeric,
+            (payload->'payload'->>'changeDue')::numeric,
+            (payload->>'change')::numeric,
+            (payload->'payload'->>'change')::numeric,
             /* sum change from tenders/payments arrays for CASH tenders only */
             (SELECT SUM(
               COALESCE(
@@ -233,8 +238,8 @@ router.get("/data", async (req: Request, res: Response) => {
       )
       SELECT
         to_char(ts_local::date, 'YYYY-MM-DD') AS day_local,
-        /* green: cash collected (cash tendered minus change due) */
-        SUM(GREATEST(cash_tender - change_due, 0))::double precision AS cash_total,
+        /* green: cash tendered (do not subtract change) */
+        SUM(GREATEST(cash_tender, 0))::double precision AS cash_total,
 
         /* blue: total sold (tendered; do NOT subtract change from non-cash tenders) */
         SUM(GREATEST(tender_total - change_due, 0))::double precision AS sold_total,

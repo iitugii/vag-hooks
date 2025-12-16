@@ -128,6 +128,10 @@ router.get("/cashout-debug", async (req, res) => {
             (payload->'payload'->>'cashChangeDue')::numeric,
             (payload->>'cashChange')::numeric,
             (payload->'payload'->>'cashChange')::numeric,
+            (payload->>'changeDue')::numeric,
+            (payload->'payload'->>'changeDue')::numeric,
+            (payload->>'change')::numeric,
+            (payload->'payload'->>'change')::numeric,
             (SELECT SUM(
               COALESCE(
                 (t->>'change')::numeric,
@@ -260,7 +264,7 @@ router.get("/cashout-debug", async (req, res) => {
         SUM(card_tender)::double precision AS sum_card_tender,
         SUM(change_due)::double precision AS sum_change_due,
         SUM(tender_total)::double precision AS sum_tender_total,
-        SUM(GREATEST(cash_tender - change_due, 0))::double precision AS cash_total,
+        SUM(GREATEST(cash_tender, 0))::double precision AS cash_total,
         SUM(GREATEST(tender_total - change_due, 0))::double precision AS sold_total
       FROM normalized;
     `;
