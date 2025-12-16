@@ -79,8 +79,6 @@ router.get("/data", async (req: Request, res: Response) => {
 
           /* change due back to customer */
           COALESCE(
-            (payload->>'amountDue')::numeric,
-            (payload->'payload'->>'amountDue')::numeric,
             (payload->>'changeDue')::numeric,
             (payload->'payload'->>'changeDue')::numeric,
             (payload->>'change')::numeric,
