@@ -4,6 +4,7 @@
     "description": "",
     "main": "index.js",
     "scripts": {
+        "postinstall": "prisma generate",
         "prisma:generate": "prisma generate",
         "build": "tsc",
         "dev": "tsx watch src/index.ts",
