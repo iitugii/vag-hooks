@@ -128,10 +128,6 @@ router.get("/cashout-debug", async (req, res) => {
             (payload->'payload'->>'cashChangeDue')::numeric,
             (payload->>'cashChange')::numeric,
             (payload->'payload'->>'cashChange')::numeric,
-            (payload->>'changeDue')::numeric,
-            (payload->'payload'->>'changeDue')::numeric,
-            (payload->>'change')::numeric,
-            (payload->'payload'->>'change')::numeric,
             (SELECT SUM(
               COALESCE(
                 (t->>'change')::numeric,

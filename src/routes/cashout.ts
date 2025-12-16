@@ -84,11 +84,6 @@ router.get("/data", async (req: Request, res: Response) => {
             (payload->'payload'->>'cashChangeDue')::numeric,
             (payload->>'cashChange')::numeric,
             (payload->'payload'->>'cashChange')::numeric,
-            /* generic change fields (only if present) */
-            (payload->>'changeDue')::numeric,
-            (payload->'payload'->>'changeDue')::numeric,
-            (payload->>'change')::numeric,
-            (payload->'payload'->>'change')::numeric,
             /* sum change from tenders/payments arrays for CASH tenders only */
             (SELECT SUM(
               COALESCE(
