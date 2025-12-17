@@ -24,7 +24,7 @@ export async function storeEvent(input: any) {
     (payload as any).cash_collected = Math.round(val * 100) / 100;
   }
 
-  const existing = await prisma.webhookEvent.findUnique({ where: { eventId: input.eventId } });
+  const existing = await prisma.webhookEvent.findFirst({ where: { eventId: input.eventId as string } });
   if (existing) return existing;
 
   return prisma.webhookEvent.create({
