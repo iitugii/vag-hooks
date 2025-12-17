@@ -406,6 +406,8 @@ async function main() {
       const createdDate = r.checkoutUtc?.toISOString() || new Date().toISOString();
       const transactionDate = createdDate;
       const quantity = r.quantity ?? 1;
+      const cashAmount = r.cashAmount ?? 0;
+      const changeDue = r.changeDue ?? 0;
 
       const payload = {
         tax: (r.tax ?? 0).toString(),
@@ -422,7 +424,8 @@ async function main() {
         brandName: r.brandName,
         createdBy: r.createdBy || "manual-upload",
         businessId: "manual-import",
-        cashAmount: Math.max((r.cashAmount ?? 0) - (r.changeDue ?? 0), 0),
+        cashAmount,
+        changeDue,
         customerId: `manual-customer-${r.rowNumber}`,
         checkAmount: r.checkAmount ?? 0,
         otherAmount: r.otherAmount ?? 0,

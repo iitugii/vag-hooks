@@ -1,0 +1,35 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "run-manual-upload",
+			"type": "shell",
+			"command": "npx",
+			"args": [
+				"tsx",
+				"scripts/manualUpload.ts"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "run-manual-upload",
+			"type": "shell",
+			"command": "npx",
+			"args": [
+				"tsx",
+				"scripts/manualUpload.ts"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "run-manual-upload",
+			"type": "shell",
+			"command": "npx",
+			"args": [
+				"tsx",
+				"scripts/manualUpload.ts"
+			],
+			"problemMatcher": []
+		}
+	]
+}

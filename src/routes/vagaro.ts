@@ -1,5 +1,5 @@
 import express from "express";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, Prisma } from "@prisma/client";
 import { randomUUID } from "crypto";
 
 const router = express.Router();
@@ -33,7 +33,8 @@ function deriveTimestamps(body: any) {
     (body?.payload?.createdDate as string) ??
     null;
 
-  const createdDate = createdIso ? new Date(createdIso) : new Date();
+  const parsed = createdIso ? new Date(createdIso) : new Date();
+  const createdDate = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
   const day = toUtcDay(createdDate);
   return { createdDate, day };
 }
@@ -58,31 +59,23 @@ function deriveCashCollected(body: any) {
   return cash || null;
 }
 
-/** Normalize a value into a trimmed string or null */
-function toStr(v: unknown): string | null {
-  if (v === null || v === undefined) return null;
-  if (typeof v === "string") {
-    const t = v.trim();
-    return t ? t : null;
+function cleanJson(value: any): any {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) return value.map(cleanJson);
+  if (typeof value === "object") {
+    const out: Record<string, any> = {};
+    for (const [k, v] of Object.entries(value)) {
+      const cleaned = cleanJson(v);
+      if (cleaned !== undefined) out[k] = cleaned;
+    }
+    return out;
   }
-  if (typeof v === "number") return Number.isFinite(v) ? String(v) : null;
-  return null;
+  if (["string", "number", "boolean"].includes(typeof value)) return value;
+  return String(value);
 }
 
-/** Extract transactionId and itemSold for composite idempotency */
-function deriveIds(body: any) {
-  const transactionId =
-    toStr(body?.transactionId) ||
-    toStr(body?.userPaymentsMstId) ||
-    toStr(pick(body, ["payload", "transactionId"])) ||
-    toStr(pick(body, ["payload", "userPaymentsMstId"]));
-
-  const itemSold =
-    toStr(body?.itemSold) ||
-    toStr(pick(body, ["payload", "itemSold"]));
-
-  return { transactionId, itemSold };
-}
 
 router.post(
   "/",
@@ -112,8 +105,15 @@ router.post(
       // ---- 3) Optional derived money snapshot (nullable)
       const cash_collected = deriveCashCollected(body);
 
-      // ---- 4) Idempotency keys: prefer transactionId + itemSold when present
-      const { transactionId, itemSold } = deriveIds(body);
+      const cleanedPayload = cleanJson(body) ?? {};
+      const cleanedHeaders = cleanJson(req.headers) ?? {};
+      const rawBodyString = (() => {
+        try {
+          return JSON.stringify(body);
+        } catch (e) {
+          return "[unserializable]";
+        }
+      })();
 
       // ---- 4) Common meta
       const sourceIp =
@@ -127,38 +127,34 @@ router.post(
       // Base row payload for create/update
       const rowData = {
         eventId,
-        transactionId,
-        itemSold,
         entityType,
         action,
         businessIds,
         createdDate,
         receivedAt: now,
-        rawBody: JSON.stringify(body),
-        headers: req.headers as any,
-        payload: body as any,
+        rawBody: rawBodyString,
+        headers: cleanedHeaders,
+        payload: cleanedPayload,
         sourceIp,
         userAgent,
         day,
         cash_collected,
       };
 
-      // ---- 5) Idempotency strategy: only upsert when both transactionId and itemSold are present
-      const saved =
-        transactionId && itemSold
-          ? await prisma.webhookEvent.upsert({
-              where: { transactionId_itemSold: { transactionId, itemSold } },
-              create: rowData,
-              update: {
-                ...rowData,
-                receivedAt: new Date(),
-              },
-            })
-          : await prisma.webhookEvent.create({ data: rowData });
+      // ---- 5) Simple insert (eventId no longer unique in DB, so allow duplicates for now)
+      const saved = await prisma.webhookEvent.create({ data: rowData });
 
       return res.status(200).json({ ok: true, id: saved.id, eventId: saved.eventId });
     } catch (err) {
       console.error("Webhook upsert failed:", err);
+      if (err instanceof Prisma.PrismaClientValidationError) {
+        return res.status(400).json({ ok: false, error: "validation_error", message: err.message });
+      }
+      if (err instanceof Prisma.PrismaClientKnownRequestError) {
+        return res
+          .status(500)
+          .json({ ok: false, error: "prisma_error", code: err.code, meta: err.meta });
+      }
       return res.status(500).json({ ok: false, error: "insert_failed" });
     }
   }
