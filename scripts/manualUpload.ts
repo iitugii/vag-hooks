@@ -459,7 +459,8 @@ async function main() {
     console.log(`\nWebhook-ready payloads: ${payloads.length}`);
     if (payloads.length) {
       console.log("Sample payload (first):\n", JSON.stringify(payloads[0], null, 2));
-      const target = process.env.MANUAL_WEBHOOK_URL || "http://localhost:3000/webhooks/vagaro";
+      const target =
+        process.env.MANUAL_WEBHOOK_URL || "https://web-production-68a4e.up.railway.app/webhooks/vagaro";
       const autoSend = process.env.MANUAL_UPLOAD_SEND === "1";
       const fetchFn = (globalThis as any).fetch as FetchLike | undefined;
 
