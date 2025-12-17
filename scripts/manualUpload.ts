@@ -440,6 +440,8 @@ async function main() {
         quantity,
         achAmount: 0,
         amountDue,
+        changeDue: amountDue,
+        cashChangeDue: amountDue,
         brandName: r.brandName ?? null,
         createdBy: r.createdBy || "manual-upload",
         businessId: "manual-import",
