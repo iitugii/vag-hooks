@@ -2,7 +2,7 @@ import path from "path";
 import { Request, Response, Router } from "express";
 
 import { prisma } from "../lib/prisma";
-import { lookupProviderName, providerServicePercentages } from "./employees";
+import { lookupProviderName, providerServicePercentages, resolveProviderId } from "./employees";
 import { excludedServiceSet } from "./excludeservice";
 
 const router = Router();
@@ -103,86 +103,129 @@ router.get("/data", async (req: Request, res: Response) => {
     const rows = await prisma.$queryRaw<WeeklySummaryRow[]>`
       WITH base AS (
         SELECT
-          "eventId",
-          payload,
-          COALESCE("createdDate", "receivedAt") AT TIME ZONE 'UTC' AT TIME ZONE 'America/New_York' AS ts_local,
-          COALESCE(
-            NULLIF((payload->>'serviceProviderId')::text, ''),
-            NULLIF((payload->'payload'->>'serviceProviderId')::text, '')
-          ) AS provider_id
-        FROM "WebhookEvent"
-      ),
-      week_scope AS (
-        SELECT *, ts_local::date AS day_local
-        FROM base
-        WHERE provider_id IS NOT NULL
-          AND ts_local::date BETWEEN ${weekStart}::date AND ${weekEnd}::date
-      ),
-      normalized AS (
-        SELECT
-          "eventId" AS event_id,
-          provider_id,
-          ts_local,
-          day_local,
-          COALESCE(
-            (payload->>'amountDue')::numeric,
-            (payload->'payload'->>'amountDue')::numeric,
-            (payload->>'amount_due')::numeric,
-            (payload->'payload'->>'amount_due')::numeric
-          )::double precision AS amount_due_raw,
-          COALESCE(
-            NULLIF((payload->>'itemSold')::text, ''),
-            NULLIF((payload->'payload'->>'itemSold')::text, ''),
-            NULLIF((payload->>'serviceName')::text, ''),
-            NULLIF((payload->'payload'->>'serviceName')::text, '')
-          ) AS item_sold,
-          COALESCE(
-            (payload->>'tip')::numeric,
-            (payload->'payload'->>'tip')::numeric,
-            (payload->>'tipAmount')::numeric,
-            (payload->'payload'->>'tipAmount')::numeric,
-            (payload->>'gratuity')::numeric,
-            (payload->'payload'->>'gratuity')::numeric,
-            0
-          )::double precision AS tip_amount,
-          (
-            COALESCE((payload->>'ccAmount')::numeric, (payload->'payload'->>'ccAmount')::numeric, 0) +
-            COALESCE((payload->>'cashAmount')::numeric, (payload->'payload'->>'cashAmount')::numeric, 0) +
-            COALESCE((payload->>'checkAmount')::numeric, (payload->'payload'->>'checkAmount')::numeric, 0) +
-            COALESCE((payload->>'achAmount')::numeric, (payload->'payload'->>'achAmount')::numeric, 0) +
-            COALESCE((payload->>'otherAmount')::numeric, (payload->'payload'->>'otherAmount')::numeric, 0) +
-            COALESCE((payload->>'bankAccountAmount')::numeric, (payload->'payload'->>'bankAccountAmount')::numeric, 0) +
-            COALESCE((payload->>'vagaroPayLaterAmount')::numeric, (payload->'payload'->>'vagaroPayLaterAmount')::numeric, 0)
-          )::double precision AS tender_total
-          , COALESCE(
-            (payload->>'cashAmount')::numeric,
-            (payload->'payload'->>'cashAmount')::numeric,
-            0
-          )::double precision AS cash_amount_raw
-          , COALESCE(
-            (payload->>'ccAmount')::numeric,
-            (payload->'payload'->>'ccAmount')::numeric,
-            0
-          )::double precision AS cc_amount_raw
-          , COALESCE(
-            (payload->>'gcRedemption')::numeric,
-            (payload->'payload'->>'gcRedemption')::numeric,
-            0
-          )::double precision AS gc_redemption_raw
-        FROM week_scope
-      ),
-      normalized_final AS (
-        SELECT
-          event_id,
-          provider_id,
-          ts_local,
-          day_local,
-          CASE
-            WHEN amount_due_raw IS NOT NULL AND amount_due_raw <> 0 THEN amount_due_raw
-            WHEN tender_total IS NOT NULL AND tender_total <> 0 THEN tender_total
-            ELSE COALESCE(amount_due_raw, 0)
-          END AS sale_amount,
-          tip_amount,
+
+    // Merge rows by canonical provider id (handles manual uploads sending names instead of IDs)
+    const merged: WeeklySummaryRow[] = [];
+    const acc = new Map<string, WeeklySummaryRow>();
+
+    for (const row of rows) {
+      const canonicalId = resolveProviderId(row.provider_id || "") || row.provider_id || "(unknown)";
+      const key = canonicalId;
+      const existing = acc.get(key);
+      const transactionsArray = Array.isArray(row.transactions) ? (row.transactions as RawTransaction[]) : [];
+
+      if (!existing) {
+        acc.set(key, {
+          provider_id: canonicalId,
+          total_sales: Number(row.total_sales || 0),
+          total_amount_due: Number(row.total_amount_due || 0),
+          total_cash_delta: Number(row.total_cash_delta || 0),
+          total_cc_delta: Number(row.total_cc_delta || 0),
+          total_gc_redemption: Number(row.total_gc_redemption || 0),
+          total_tips: Number(row.total_tips || 0),
+          service_percentage: row.service_percentage,
+          tip_fee_percentage: row.tip_fee_percentage,
+          special_deduction: row.special_deduction,
+          special_addition: row.special_addition,
+          transactions: transactionsArray,
+        });
+      } else {
+        existing.total_sales = Number(existing.total_sales || 0) + Number(row.total_sales || 0);
+        existing.total_amount_due = Number(existing.total_amount_due || 0) + Number(row.total_amount_due || 0);
+        existing.total_cash_delta = Number(existing.total_cash_delta || 0) + Number(row.total_cash_delta || 0);
+        existing.total_cc_delta = Number(existing.total_cc_delta || 0) + Number(row.total_cc_delta || 0);
+        existing.total_gc_redemption = Number(existing.total_gc_redemption || 0) + Number(row.total_gc_redemption || 0);
+        existing.total_tips = Number(existing.total_tips || 0) + Number(row.total_tips || 0);
+        existing.service_percentage = existing.service_percentage ?? row.service_percentage;
+        existing.tip_fee_percentage = existing.tip_fee_percentage ?? row.tip_fee_percentage;
+        existing.special_deduction = existing.special_deduction ?? row.special_deduction;
+        existing.special_addition = existing.special_addition ?? row.special_addition;
+        const existingTx = Array.isArray(existing.transactions) ? (existing.transactions as RawTransaction[]) : [];
+        existing.transactions = existingTx.concat(transactionsArray);
+      }
+    }
+
+    merged.push(...acc.values());
+
+    const providers: ProviderSummary[] = merged.map((row: WeeklySummaryRow) => {
+      const providerId = row.provider_id || "(unknown)";
+      const providerName = lookupProviderName(providerId) || row.provider_id || null;
+      const totalSalesRaw = Number(row.total_sales || 0);
+      const totalAmountDueRaw = Number(row.total_amount_due || 0);
+      const totalCashDeltaRaw = Number(row.total_cash_delta || 0);
+      const totalCcDeltaRaw = Number(row.total_cc_delta || 0);
+      const totalGcRedemptionRaw = Number(row.total_gc_redemption || 0);
+      const totalSales = roundCurrency(totalSalesRaw);
+      const totalAmountDue = roundCurrency(totalAmountDueRaw);
+      const totalCashDelta = roundCurrency(totalCashDeltaRaw);
+      const totalCcDelta = roundCurrency(totalCcDeltaRaw);
+      const totalGcRedemption = roundCurrency(totalGcRedemptionRaw);
+      const tips = roundCurrency(Number(row.total_tips || 0));
+
+      const rawTransactions = Array.isArray(row.transactions)
+        ? (row.transactions as RawTransaction[])
+        : [];
+
+      const transactions: ProviderTransaction[] = rawTransactions.map((t: RawTransaction) => ({
+        eventId: t.eventId || "",
+        timestamp: t.timestamp || null,
+        sale: roundCurrency(Number(t.sale || 0)),
+        tip: roundCurrency(Number(t.tip || 0)),
+        amountDue: roundCurrency(Number(t.amountDue || 0)),
+        cashAmount: roundCurrency(Number(t.cashAmount || 0)),
+        cashDelta: roundCurrency(Number(t.cashAmount || 0) - Number(t.amountDue || 0)),
+        ccAmount: roundCurrency(Number(t.ccAmount || 0)),
+        ccDelta: roundCurrency(Number(t.ccAmount || 0) + Number(t.gcRedemption || 0) - Number(t.tip || 0)),
+        gcRedemption: roundCurrency(Number(t.gcRedemption || 0)),
+        newServiceValue: roundCurrency(Number(t.sale || 0) - Number(t.tip || 0)),
+        itemSold: t.itemSold || null,
+        excludedFromAssistantFee: isExcludedService(t.itemSold || undefined),
+      }));
+
+      const servicePercentage = pickPercentage(providerId, providerServicePercentages, row.service_percentage);
+      const tipFeePercentage = row.tip_fee_percentage ?? null;
+      const specialDeduction = row.special_deduction ?? 0;
+      const specialAddition = row.special_addition ?? 0;
+      const specialDeductionAutoApplied = specialDeduction === AUTO_SPECIAL_DEDUCTION_AMOUNT;
+
+      const tipFeeAmount = roundCurrency((tips * (tipFeePercentage ?? 0)) / 100);
+      const techAssistantFee = calculateAssistantFee(transactions);
+
+      const netService = roundCurrency(totalSales - tips);
+      const techPayBase = roundCurrency((netService * (servicePercentage ?? 0)) / 100);
+      const commissionComparison = calculateCommissionComparison(providerId, netService, techPayBase);
+      const techPay = roundCurrency(techPayBase - tipFeeAmount - techAssistantFee - specialDeduction + specialAddition);
+
+      return {
+        providerId,
+        providerName,
+        totalSales,
+        totalAmountDue,
+        totalCashDelta,
+        totalCcDelta,
+        totalGcRedemption,
+        totalNewService: roundCurrency(totalSales - tips),
+        tips,
+        servicePercentage,
+        tipFeePercentage,
+        specialDeduction,
+        specialAddition,
+        specialDeductionAutoApplied,
+        housePay: roundCurrency(totalAmountDue - totalCashDelta - totalCcDelta),
+        techPay,
+        tipFeeAmount,
+        techAssistantFee,
+        commissionComparison,
+        transactions,
+        formulaComponents: {
+          cashAmount: roundCurrency(totalCashDelta + totalAmountDue),
+          amountDue: totalAmountDue,
+          cardAmount: roundCurrency(totalCcDelta + tips - totalGcRedemption),
+          giftCard: totalGcRedemption,
+          tip: tips,
+        },
+      } as ProviderSummary;
+    });
           amount_due_raw,
           cash_amount_raw,
           cc_amount_raw,

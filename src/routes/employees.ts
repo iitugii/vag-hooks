@@ -47,3 +47,25 @@ export const providerServicePercentages: Record<string, number> = {
 export function lookupProviderName(providerId: string): string | undefined {
     return providerDirectory[providerId];
 }
+
+const providerNameToId: Record<string, string> = Object.entries(providerDirectory).reduce(
+    (acc, [id, name]) => {
+        const key = name.trim().toLowerCase();
+        acc[key] = id;
+        return acc;
+    },
+    {} as Record<string, string>
+);
+
+/**
+ * Resolve a provider identifier that may be either a Vagaro ID or a human name
+ * into the canonical providerId used by payroll.
+ */
+export function resolveProviderId(value: string | null | undefined): string | null {
+        if (!value) return null;
+        const trimmed = value.trim();
+        if (!trimmed) return null;
+        if (providerDirectory[trimmed]) return trimmed; // already an ID
+        const byName = providerNameToId[trimmed.toLowerCase()];
+        return byName || null;
+}
