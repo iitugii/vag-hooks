@@ -58,6 +58,32 @@ function deriveCashCollected(body: any) {
   return cash || null;
 }
 
+/** Normalize a value into a trimmed string or null */
+function toStr(v: unknown): string | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "string") {
+    const t = v.trim();
+    return t ? t : null;
+  }
+  if (typeof v === "number") return Number.isFinite(v) ? String(v) : null;
+  return null;
+}
+
+/** Extract transactionId and itemSold for composite idempotency */
+function deriveIds(body: any) {
+  const transactionId =
+    toStr(body?.transactionId) ||
+    toStr(body?.userPaymentsMstId) ||
+    toStr(pick(body, ["payload", "transactionId"])) ||
+    toStr(pick(body, ["payload", "userPaymentsMstId"]));
+
+  const itemSold =
+    toStr(body?.itemSold) ||
+    toStr(pick(body, ["payload", "itemSold"]));
+
+  return { transactionId, itemSold };
+}
+
 router.post(
   "/",
   // body is already parsed earlier in your app; keep a local parser as a fallback
@@ -86,6 +112,9 @@ router.post(
       // ---- 3) Optional derived money snapshot (nullable)
       const cash_collected = deriveCashCollected(body);
 
+      // ---- 4) Idempotency keys: prefer transactionId + itemSold when present
+      const { transactionId, itemSold } = deriveIds(body);
+
       // ---- 4) Common meta
       const sourceIp =
         (req.headers["x-forwarded-for"] as string) ||
@@ -93,40 +122,39 @@ router.post(
         "";
       const userAgent = req.get("user-agent") || "";
 
-      // ---- 5) Upsert (idempotent): if Vagaro re-sends same eventId, update the row
-      const saved = await prisma.webhookEvent.upsert({
-        where: { eventId },
-        create: {
-          eventId,
-          entityType,
-          action,
-          businessIds,
-          createdDate,
-          receivedAt: new Date(),
-          rawBody: JSON.stringify(body),
-          headers: req.headers as any,
-          payload: body as any,
-          sourceIp,
-          userAgent,
-          day,
-          cash_collected, // nullable, safe to include
-        },
-        update: {
-          // refresh latest data if duplicate delivery
-          entityType,
-          action,
-          businessIds,
-          createdDate,
-          receivedAt: new Date(),
-          rawBody: JSON.stringify(body),
-          headers: req.headers as any,
-          payload: body as any,
-          sourceIp,
-          userAgent,
-          day,
-          cash_collected,
-        },
-      });
+      const now = new Date();
+
+      // Base row payload for create/update
+      const rowData = {
+        eventId,
+        transactionId,
+        itemSold,
+        entityType,
+        action,
+        businessIds,
+        createdDate,
+        receivedAt: now,
+        rawBody: JSON.stringify(body),
+        headers: req.headers as any,
+        payload: body as any,
+        sourceIp,
+        userAgent,
+        day,
+        cash_collected,
+      };
+
+      // ---- 5) Idempotency strategy: only upsert when both transactionId and itemSold are present
+      const saved =
+        transactionId && itemSold
+          ? await prisma.webhookEvent.upsert({
+              where: { transactionId_itemSold: { transactionId, itemSold } },
+              create: rowData,
+              update: {
+                ...rowData,
+                receivedAt: new Date(),
+              },
+            })
+          : await prisma.webhookEvent.create({ data: rowData });
 
       return res.status(200).json({ ok: true, id: saved.id, eventId: saved.eventId });
     } catch (err) {

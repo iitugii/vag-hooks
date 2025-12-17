@@ -8,24 +8,27 @@ datasource db {
 }
 
 model WebhookEvent {
-  id           String    @id @default(cuid())
-  eventId      String    @unique
-  entityType   String
-  action       String
-  businessIds  String[]
-  createdDate  DateTime
-  receivedAt   DateTime  @default(now())
+  id            String    @id @default(cuid())
+  eventId       String
+  transactionId String?
+  itemSold      String?
+  entityType    String
+  action        String
+  businessIds   String[]
+  createdDate   DateTime
+  receivedAt    DateTime  @default(now())
 
-  rawBody      String
-  headers      Json
-  payload      Json
-  sourceIp     String?
-  userAgent    String?
+  rawBody       String
+  headers       Json
+  payload       Json
+  sourceIp      String?
+  userAgent     String?
 
   // Derived fields
   cash_collected Float?   // added for cashout calculations
   day            DateTime @default(now()) @db.Date
 
+  @@unique([transactionId, itemSold])
   @@index([entityType, action])
   @@index([day])
 }
