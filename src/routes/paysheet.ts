@@ -103,6 +103,144 @@ router.get("/data", async (req: Request, res: Response) => {
     const rows = await prisma.$queryRaw<WeeklySummaryRow[]>`
       WITH base AS (
         SELECT
+          "eventId",
+          payload,
+          COALESCE("createdDate", "receivedAt") AT TIME ZONE 'UTC' AT TIME ZONE 'America/New_York' AS ts_local,
+          COALESCE(
+            NULLIF((payload->>'serviceProviderId')::text, ''),
+            NULLIF((payload->'payload'->>'serviceProviderId')::text, '')
+          ) AS provider_id
+        FROM "WebhookEvent"
+      ),
+      week_scope AS (
+        SELECT *, ts_local::date AS day_local
+        FROM base
+        WHERE provider_id IS NOT NULL
+          AND ts_local::date BETWEEN ${weekStart}::date AND ${weekEnd}::date
+      ),
+      normalized AS (
+        SELECT
+          "eventId" AS event_id,
+          provider_id,
+          ts_local,
+          day_local,
+          COALESCE(
+            (payload->>'amountDue')::numeric,
+            (payload->'payload'->>'amountDue')::numeric,
+            (payload->>'amount_due')::numeric,
+            (payload->'payload'->>'amount_due')::numeric
+          )::double precision AS amount_due_raw,
+          COALESCE(
+            NULLIF((payload->>'itemSold')::text, ''),
+            NULLIF((payload->'payload'->>'itemSold')::text, ''),
+            NULLIF((payload->>'serviceName')::text, ''),
+            NULLIF((payload->'payload'->>'serviceName')::text, '')
+          ) AS item_sold,
+          COALESCE(
+            (payload->>'tip')::numeric,
+            (payload->'payload'->>'tip')::numeric,
+            (payload->>'tipAmount')::numeric,
+            (payload->'payload'->>'tipAmount')::numeric,
+            (payload->>'gratuity')::numeric,
+            (payload->'payload'->>'gratuity')::numeric,
+            0
+          )::double precision AS tip_amount,
+          (
+            COALESCE((payload->>'ccAmount')::numeric, (payload->'payload'->>'ccAmount')::numeric, 0) +
+            COALESCE((payload->>'cashAmount')::numeric, (payload->'payload'->>'cashAmount')::numeric, 0) +
+            COALESCE((payload->>'checkAmount')::numeric, (payload->'payload'->>'checkAmount')::numeric, 0) +
+            COALESCE((payload->>'achAmount')::numeric, (payload->'payload'->>'achAmount')::numeric, 0) +
+            COALESCE((payload->>'otherAmount')::numeric, (payload->'payload'->>'otherAmount')::numeric, 0) +
+            COALESCE((payload->>'bankAccountAmount')::numeric, (payload->'payload'->>'bankAccountAmount')::numeric, 0) +
+            COALESCE((payload->>'vagaroPayLaterAmount')::numeric, (payload->'payload'->>'vagaroPayLaterAmount')::numeric, 0)
+          )::double precision AS tender_total,
+          COALESCE(
+            (payload->>'cashAmount')::numeric,
+            (payload->'payload'->>'cashAmount')::numeric,
+            0
+          )::double precision AS cash_amount_raw,
+          COALESCE(
+            (payload->>'ccAmount')::numeric,
+            (payload->'payload'->>'ccAmount')::numeric,
+            0
+          )::double precision AS cc_amount_raw,
+          COALESCE(
+            (payload->>'gcRedemption')::numeric,
+            (payload->'payload'->>'gcRedemption')::numeric,
+            0
+          )::double precision AS gc_redemption_raw
+        FROM week_scope
+      ),
+      normalized_final AS (
+        SELECT
+          event_id,
+          provider_id,
+          ts_local,
+          day_local,
+          CASE
+            WHEN amount_due_raw IS NOT NULL AND amount_due_raw <> 0 THEN amount_due_raw
+            WHEN tender_total IS NOT NULL AND tender_total <> 0 THEN tender_total
+            ELSE COALESCE(amount_due_raw, 0)
+          END AS sale_amount,
+          tip_amount,
+          amount_due_raw,
+          cash_amount_raw,
+          cc_amount_raw,
+          gc_redemption_raw,
+          item_sold
+        FROM normalized
+      ),
+      deduped AS (
+        SELECT DISTINCT ON (event_id)
+          event_id,
+          provider_id,
+          ts_local,
+          sale_amount,
+          tip_amount,
+          amount_due_raw,
+          cash_amount_raw,
+          cc_amount_raw,
+          gc_redemption_raw,
+          item_sold
+        FROM normalized_final
+        ORDER BY event_id, ts_local DESC
+      )
+      SELECT
+        d.provider_id,
+        SUM(GREATEST(d.sale_amount - d.tip_amount, 0)) AS total_sales,
+        SUM(COALESCE(d.amount_due_raw, 0)) AS total_amount_due,
+        SUM(COALESCE(d.cash_amount_raw, 0) - COALESCE(d.amount_due_raw, 0)) AS total_cash_delta,
+        SUM(COALESCE(d.cc_amount_raw, 0) + COALESCE(d.gc_redemption_raw, 0) - COALESCE(d.tip_amount, 0)) AS total_cc_delta,
+        SUM(COALESCE(d.gc_redemption_raw, 0)) AS total_gc_redemption,
+        SUM(d.tip_amount) AS total_tips,
+        MAX(pwc."servicePercentage") AS service_percentage,
+        MAX(pwc."tipFeePercentage") AS tip_fee_percentage,
+        MAX(pwc."specialDeduction") AS special_deduction,
+        MAX(pwc."specialAddition") AS special_addition,
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'eventId', d.event_id,
+              'timestamp', d.ts_local,
+              'sale', d.sale_amount,
+              'tip', d.tip_amount,
+              'amountDue', d.amount_due_raw,
+              'cashAmount', d.cash_amount_raw,
+              'ccAmount', d.cc_amount_raw,
+              'gcRedemption', d.gc_redemption_raw,
+              'itemSold', d.item_sold
+            )
+            ORDER BY d.ts_local
+          ),
+          '[]'::json
+        ) AS transactions
+      FROM deduped d
+      LEFT JOIN "ProviderWeekConfig" pwc
+        ON pwc."providerId" = d.provider_id
+       AND pwc."weekStart" = ${weekStart}::date
+      GROUP BY d.provider_id
+      ORDER BY d.provider_id;
+    `;
 
     // Merge rows by canonical provider id (handles manual uploads sending names instead of IDs)
     const merged: WeeklySummaryRow[] = [];
@@ -285,9 +423,9 @@ router.get("/data", async (req: Request, res: Response) => {
       ORDER BY d.provider_id;
     `;
 
-    const providers: ProviderSummary[] = rows.map((row: WeeklySummaryRow) => {
+    const providers: ProviderSummary[] = merged.map((row: WeeklySummaryRow) => {
       const providerId = row.provider_id || "(unknown)";
-      const providerName = lookupProviderName(providerId) || null;
+      const providerName = lookupProviderName(providerId) || row.provider_id || null;
       const totalSalesRaw = Number(row.total_sales || 0);
       const totalAmountDueRaw = Number(row.total_amount_due || 0);
       const totalCashDeltaRaw = Number(row.total_cash_delta || 0);
