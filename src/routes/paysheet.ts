@@ -244,47 +244,6 @@ router.get("/data", async (req: Request, res: Response) => {
 
     // Merge rows by canonical provider id (handles manual uploads sending names instead of IDs)
     const merged: WeeklySummaryRow[] = [];
-    const acc = new Map<string, WeeklySummaryRow>();
-
-    for (const row of rows) {
-      const canonicalId = resolveProviderId(row.provider_id || "") || row.provider_id || "(unknown)";
-      const key = canonicalId;
-      const existing = acc.get(key);
-      const transactionsArray = Array.isArray(row.transactions) ? (row.transactions as RawTransaction[]) : [];
-
-      if (!existing) {
-        acc.set(key, {
-          provider_id: canonicalId,
-          total_sales: Number(row.total_sales || 0),
-          total_amount_due: Number(row.total_amount_due || 0),
-          total_cash_delta: Number(row.total_cash_delta || 0),
-          total_cc_delta: Number(row.total_cc_delta || 0),
-          total_gc_redemption: Number(row.total_gc_redemption || 0),
-          total_tips: Number(row.total_tips || 0),
-          service_percentage: row.service_percentage,
-          tip_fee_percentage: row.tip_fee_percentage,
-          special_deduction: row.special_deduction,
-          special_addition: row.special_addition,
-          transactions: transactionsArray,
-        });
-      } else {
-        existing.total_sales = Number(existing.total_sales || 0) + Number(row.total_sales || 0);
-        existing.total_amount_due = Number(existing.total_amount_due || 0) + Number(row.total_amount_due || 0);
-        existing.total_cash_delta = Number(existing.total_cash_delta || 0) + Number(row.total_cash_delta || 0);
-        existing.total_cc_delta = Number(existing.total_cc_delta || 0) + Number(row.total_cc_delta || 0);
-        existing.total_gc_redemption = Number(existing.total_gc_redemption || 0) + Number(row.total_gc_redemption || 0);
-        existing.total_tips = Number(existing.total_tips || 0) + Number(row.total_tips || 0);
-        existing.service_percentage = existing.service_percentage ?? row.service_percentage;
-        existing.tip_fee_percentage = existing.tip_fee_percentage ?? row.tip_fee_percentage;
-        existing.special_deduction = existing.special_deduction ?? row.special_deduction;
-        existing.special_addition = existing.special_addition ?? row.special_addition;
-        const existingTx = Array.isArray(existing.transactions) ? (existing.transactions as RawTransaction[]) : [];
-        existing.transactions = existingTx.concat(transactionsArray);
-      }
-    }
-
-    merged.push(...acc.values());
-
     const providers: ProviderSummary[] = merged.map((row: WeeklySummaryRow) => {
       const providerId = row.provider_id || "(unknown)";
       const providerName = lookupProviderName(providerId) || row.provider_id || null;
@@ -304,35 +263,143 @@ router.get("/data", async (req: Request, res: Response) => {
         ? (row.transactions as RawTransaction[])
         : [];
 
-      const transactions: ProviderTransaction[] = rawTransactions.map((t: RawTransaction) => ({
-        eventId: t.eventId || "",
-        timestamp: t.timestamp || null,
-        sale: roundCurrency(Number(t.sale || 0)),
-        tip: roundCurrency(Number(t.tip || 0)),
-        amountDue: roundCurrency(Number(t.amountDue || 0)),
-        cashAmount: roundCurrency(Number(t.cashAmount || 0)),
-        cashDelta: roundCurrency(Number(t.cashAmount || 0) - Number(t.amountDue || 0)),
-        ccAmount: roundCurrency(Number(t.ccAmount || 0)),
-        ccDelta: roundCurrency(Number(t.ccAmount || 0) + Number(t.gcRedemption || 0) - Number(t.tip || 0)),
-        gcRedemption: roundCurrency(Number(t.gcRedemption || 0)),
-        newServiceValue: roundCurrency(Number(t.sale || 0) - Number(t.tip || 0)),
-        itemSold: t.itemSold || null,
-        excludedFromAssistantFee: isExcludedService(t.itemSold || undefined),
-      }));
+      const transactions: ProviderTransaction[] = rawTransactions
+        .map(tx => {
+          const eventId = tx?.eventId ? String(tx.eventId) : "";
+          if (!eventId) return null;
+          const itemSold = typeof tx?.itemSold === "string" && tx.itemSold.trim() ? tx.itemSold.trim() : null;
+          const amountDue = Number(tx?.amountDue ?? 0);
+          const cashAmount = Number(tx?.cashAmount ?? 0);
+          const ccAmount = Number(tx?.ccAmount ?? 0);
+          const gcAmount = Number(tx?.gcRedemption ?? 0);
+          const cashDelta = cashAmount - amountDue;
+          const ccDelta = ccAmount + gcAmount - Number(tx?.tip ?? 0);
+          const newServiceValue = cashDelta + ccDelta;
+          const excludedFromAssistantFee = !!(itemSold && excludedServiceSet.has(itemSold.toLowerCase()));
+          return {
+            eventId,
+            timestamp: typeof tx?.timestamp === "string" ? tx.timestamp : null,
+            sale: Number(tx?.sale || 0),
+            tip: Number(tx?.tip || 0),
+            amountDue: Number.isFinite(amountDue) ? amountDue : 0,
+            cashAmount: Number.isFinite(cashAmount) ? cashAmount : 0,
+            cashDelta: Number.isFinite(cashDelta) ? cashDelta : 0,
+            ccAmount: Number.isFinite(ccAmount) ? ccAmount : 0,
+            ccDelta: Number.isFinite(ccDelta) ? ccDelta : 0,
+            gcRedemption: Number.isFinite(gcAmount) ? gcAmount : 0,
+            newServiceValue: Number.isFinite(newServiceValue) ? newServiceValue : 0,
+            itemSold,
+            excludedFromAssistantFee,
+          };
+        })
+        .filter((tx): tx is ProviderTransaction => tx !== null);
 
-      const servicePercentage = pickPercentage(providerId, providerServicePercentages, row.service_percentage);
-      const tipFeePercentage = row.tip_fee_percentage ?? null;
-      const specialDeduction = row.special_deduction ?? 0;
-      const specialAddition = row.special_addition ?? 0;
-      const specialDeductionAutoApplied = specialDeduction === AUTO_SPECIAL_DEDUCTION_AMOUNT;
+      const formulaComponents = transactions.reduce<ProviderFormulaComponents>(
+        (acc, tx) => {
+          const addIfFinite = (current: number, value: number) =>
+            current + (Number.isFinite(value) ? value : 0);
+          acc.cashAmount = addIfFinite(acc.cashAmount, tx.cashAmount);
+          acc.amountDue = addIfFinite(acc.amountDue, tx.amountDue);
+          acc.cardAmount = addIfFinite(acc.cardAmount, tx.ccAmount);
+          acc.giftCard = addIfFinite(acc.giftCard, tx.gcRedemption);
+          acc.tip = addIfFinite(acc.tip, tx.tip);
+          return acc;
+        },
+        { cashAmount: 0, amountDue: 0, cardAmount: 0, giftCard: 0, tip: 0 }
+      );
 
-      const tipFeeAmount = roundCurrency((tips * (tipFeePercentage ?? 0)) / 100);
-      const techAssistantFee = calculateAssistantFee(transactions);
+      const totalNewServiceRaw =
+        (formulaComponents.cashAmount - formulaComponents.amountDue) +
+        ((formulaComponents.cardAmount + formulaComponents.giftCard) - formulaComponents.tip);
+      const totalNewService = roundCurrency(totalNewServiceRaw);
 
-      const netService = roundCurrency(totalSales - tips);
-      const techPayBase = roundCurrency((netService * (servicePercentage ?? 0)) / 100);
-      const commissionComparison = calculateCommissionComparison(providerId, netService, techPayBase);
-      const techPay = roundCurrency(techPayBase - tipFeeAmount - techAssistantFee - specialDeduction + specialAddition);
+      let servicePercentage: number | null = null;
+      if (row.service_percentage !== null && row.service_percentage !== undefined) {
+        const numeric = Number(row.service_percentage);
+        if (Number.isFinite(numeric)) {
+          servicePercentage = numeric;
+        }
+      }
+      if (servicePercentage === null) {
+        const fallback = providerServicePercentages[providerId];
+        if (typeof fallback === "number" && Number.isFinite(fallback)) {
+          servicePercentage = fallback;
+        }
+      }
+
+      const tipFeePercentage =
+        row.tip_fee_percentage === null || row.tip_fee_percentage === undefined
+          ? null
+          : Number(row.tip_fee_percentage);
+
+      const specialDeductionConfiguredRaw =
+        row.special_deduction === null || row.special_deduction === undefined
+          ? null
+          : Number(row.special_deduction);
+      const specialAdditionRaw =
+        row.special_addition === null || row.special_addition === undefined
+          ? 0
+          : Number(row.special_addition);
+      const shouldAutoApplySpecialDeduction =
+        servicePercentage !== null &&
+        servicePercentage >= 50 &&
+        specialDeductionConfiguredRaw === null;
+
+      const specialDeductionRaw = shouldAutoApplySpecialDeduction
+        ? AUTO_SPECIAL_DEDUCTION_AMOUNT
+        : specialDeductionConfiguredRaw ?? 0;
+
+      const serviceBaseRaw = totalNewServiceRaw;
+      const techServiceRaw =
+        servicePercentage === null ? 0 : serviceBaseRaw * (servicePercentage / 100);
+      const houseServiceRaw = serviceBaseRaw - techServiceRaw;
+
+      const tipFeePct = tipFeePercentage === null ? 0 : tipFeePercentage;
+      const tipFeeRaw = tips * (tipFeePct / 100);
+      const techTipRaw = tips - tipFeeRaw;
+
+      const assistantRateBase =
+        servicePercentage === null ? 0 : servicePercentage >= 50 ? 2 : 1;
+      // 45% techs use base $1; 50%+ use $2. Services with "and" count double.
+      const techAssistantFeeRaw = transactions.reduce((sum, tx) => {
+        if (tx.excludedFromAssistantFee) {
+          return sum;
+        }
+        const serviceValue = Math.max(tx.sale - tx.tip, 0);
+        if (serviceValue < 1) {
+          return sum;
+        }
+        const descriptor = typeof tx.itemSold === "string" ? tx.itemSold.toLowerCase() : "";
+        const multiplier = descriptor.includes(" and ") ? 2 : 1;
+        return sum + assistantRateBase * multiplier;
+      }, 0);
+
+      const housePay = roundCurrency(
+        houseServiceRaw + tipFeeRaw + techAssistantFeeRaw + specialDeductionRaw - specialAdditionRaw
+      );
+      const techPay = roundCurrency(
+        Math.max(
+          techServiceRaw + tips - tipFeeRaw - techAssistantFeeRaw - specialDeductionRaw + specialAdditionRaw,
+          0
+        )
+      );
+      const techAssistantFee = roundCurrency(techAssistantFeeRaw);
+      const tipFeeAmount = roundCurrency(tipFeeRaw);
+      const specialDeduction = roundCurrency(specialDeductionRaw);
+      const specialAddition = roundCurrency(specialAdditionRaw);
+      const specialDeductionAutoApplied = shouldAutoApplySpecialDeduction;
+
+      const commissionComparison:
+        | CommissionComparison
+        | null = servicePercentage !== null && servicePercentage < 50
+        ? {
+            actualPercent: roundPercentage(servicePercentage),
+            actualAmount: roundCurrency(techServiceRaw),
+            baselinePercent: 50,
+            baselineAmount: roundCurrency(totalSales * 0.5),
+            deltaAmount: roundCurrency(totalSales * 0.5 - techServiceRaw),
+          }
+        : null;
 
       return {
         providerId,
@@ -342,48 +409,22 @@ router.get("/data", async (req: Request, res: Response) => {
         totalCashDelta,
         totalCcDelta,
         totalGcRedemption,
-        totalNewService: roundCurrency(totalSales - tips),
+        totalNewService,
         tips,
         servicePercentage,
         tipFeePercentage,
         specialDeduction,
         specialAddition,
         specialDeductionAutoApplied,
-        housePay: roundCurrency(totalAmountDue - totalCashDelta - totalCcDelta),
+        housePay,
         techPay,
         tipFeeAmount,
         techAssistantFee,
         commissionComparison,
         transactions,
-        formulaComponents: {
-          cashAmount: roundCurrency(totalCashDelta + totalAmountDue),
-          amountDue: totalAmountDue,
-          cardAmount: roundCurrency(totalCcDelta + tips - totalGcRedemption),
-          giftCard: totalGcRedemption,
-          tip: tips,
-        },
-      } as ProviderSummary;
+        formulaComponents,
+      };
     });
-          amount_due_raw,
-          cash_amount_raw,
-          cc_amount_raw,
-          gc_redemption_raw,
-          item_sold
-        FROM normalized
-      ),
-      deduped AS (
-        SELECT DISTINCT ON (event_id)
-          event_id,
-          provider_id,
-          ts_local,
-          sale_amount,
-          tip_amount,
-          amount_due_raw,
-          cash_amount_raw,
-          cc_amount_raw,
-          gc_redemption_raw,
-          item_sold
-        FROM normalized_final
         ORDER BY event_id, ts_local DESC
       )
       SELECT
