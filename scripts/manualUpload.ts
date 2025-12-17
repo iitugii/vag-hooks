@@ -273,7 +273,13 @@ async function parseTransactions(filePath: string) {
     checkout: findColumn(["checkout date", "check out date", "checkout date/time"], 2),
     transactionId: findColumn(["transaction id", "transaction id #", "tran id"], 4),
     appointment: findColumn(["appointment date", "appt date", "appointment"], 5),
-    itemSold: findColumn(["service/product", "service / product", "service", "product"], 7),
+    itemSold: findColumn([
+      "service/product/gc/package/membership/class",
+      "service/product",
+      "service / product",
+      "service",
+      "product"
+    ], 6),
     purchaseType: findColumn(["transaction type", "type"], 8),
     provider: findColumn(["service provider", "provider"], 10),
     quantity: findColumn(["qty", "quantity"], 12),
