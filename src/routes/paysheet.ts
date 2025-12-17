@@ -247,7 +247,8 @@ router.get("/data", async (req: Request, res: Response) => {
     const acc = new Map<string, WeeklySummaryRow>();
 
     for (const row of rows) {
-      const canonicalId = resolveProviderId(row.provider_id || "") || row.provider_id || "(unknown)";
+      const rawId = typeof row.provider_id === "string" ? row.provider_id.trim() : "";
+      const canonicalId = resolveProviderId(rawId) || rawId || "(unknown)";
       const key = canonicalId;
       const transactionsArray = Array.isArray(row.transactions) ? (row.transactions as RawTransaction[]) : [];
       const existing = acc.get(key);
@@ -286,7 +287,7 @@ router.get("/data", async (req: Request, res: Response) => {
     merged.push(...acc.values());
 
     const providers: ProviderSummary[] = merged.map((row: WeeklySummaryRow) => {
-      const providerId = row.provider_id || "(unknown)";
+      const providerId = (typeof row.provider_id === "string" ? row.provider_id.trim() : row.provider_id) || "(unknown)";
       const providerName = lookupProviderName(providerId) || row.provider_id || null;
       const totalSalesRaw = Number(row.total_sales || 0);
       const totalAmountDueRaw = Number(row.total_amount_due || 0);

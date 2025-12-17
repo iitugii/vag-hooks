@@ -57,6 +57,11 @@ const providerNameToId: Record<string, string> = Object.entries(providerDirector
     {} as Record<string, string>
 );
 
+// Known misspellings/aliases that should resolve to canonical provider IDs
+const providerNameAliases: Record<string, string> = {
+    "mary betancourt": "RgW1Yi3geC8oYpX-jPt1xg==",
+};
+
 /**
  * Resolve a provider identifier that may be either a Vagaro ID or a human name
  * into the canonical providerId used by payroll.
@@ -66,6 +71,9 @@ export function resolveProviderId(value: string | null | undefined): string | nu
         const trimmed = value.trim();
         if (!trimmed) return null;
         if (providerDirectory[trimmed]) return trimmed; // already an ID
-        const byName = providerNameToId[trimmed.toLowerCase()];
-        return byName || null;
+    const lower = trimmed.toLowerCase();
+    const byAlias = providerNameAliases[lower];
+    if (byAlias) return byAlias;
+    const byName = providerNameToId[lower];
+    return byName || null;
 }
