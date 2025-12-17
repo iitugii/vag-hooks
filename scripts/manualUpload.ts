@@ -307,7 +307,8 @@ async function parseTransactions(filePath: string) {
 
   for (let r = dataStart; r <= sheet.rowCount; r++) {
     const row = sheet.getRow(r);
-    const hasTotal = row.values.some(v => typeof v === "string" && v.trim().toUpperCase() === "TOTAL");
+    const rowVals = Array.isArray(row.values) ? row.values : [];
+    const hasTotal = rowVals.some((v: any) => typeof v === "string" && v.trim().toUpperCase() === "TOTAL");
     if (hasTotal) break;
 
     const checkoutVal = columns.checkout ? row.getCell(columns.checkout).value : null;
@@ -399,52 +400,69 @@ async function main() {
     const dir = process.env.MANUAL_UPLOAD_DIR || (await promptDirectory());
     const filePath = process.env.MANUAL_UPLOAD_FILE || (await promptFile(dir));
     const rows = await parseTransactions(filePath);
-    // Build webhook-like payloads
+    // Build webhook payloads that mirror Vagaro transactions exactly
     const payloads = rows.map(r => {
       const transactionId = r.transactionId || `manual-tx-${r.rowNumber}`;
       const eventId = randomUUID();
       const createdDate = r.checkoutUtc?.toISOString() || new Date().toISOString();
       const transactionDate = createdDate;
       const quantity = r.quantity ?? 1;
+
+      const tax = r.tax ?? 0;
+      const tip = r.tip ?? 0;
       const cashAmount = r.cashAmount ?? 0;
+      const checkAmount = r.checkAmount ?? 0;
+      const ccAmount = r.ccAmount ?? 0;
+      const gcRedemption = r.gcRedemption ?? 0;
+      const bankAccountAmount = r.bankAccountAmount ?? 0;
+      const vagaroPayLaterAmount = r.buyNowPayLater ?? 0;
+      const packageRedemption = r.packageRedemption ?? 0;
+      const membershipAmount = r.membership ?? 0;
+      const otherAmount = r.otherAmount ?? 0;
       const changeDue = r.changeDue ?? 0;
+      const discount = r.discount ?? 0;
+      // amountDue comes directly from the Change Due column per guidance
+      const amountDue = changeDue;
+
+      const itemSold = r.itemSold ? String(r.itemSold).trim() : "";
+      const serviceCategory = itemSold;
+      const purchaseType = r.purchaseType || "Service";
 
       const payload = {
-        tax: (r.tax ?? 0).toString(),
-        tip: r.tip ?? 0,
-        ccMode: "Manual",
+        tax: tax.toString(),
+        tip,
+        ccMode: ccAmount > 0 ? "C" : "Manual",
         ccType: r.brandName || "Manual",
         points: 0,
-        ccAmount: r.ccAmount ?? 0,
-        discount: r.discount ?? 0,
-        itemSold: r.itemSold || "Unknown",
+        ccAmount,
+        discount,
+        itemSold,
         quantity,
         achAmount: 0,
-        amountDue: r.amountPaid ?? 0,
-        brandName: r.brandName,
+        amountDue,
+        brandName: r.brandName ?? null,
         createdBy: r.createdBy || "manual-upload",
         businessId: "manual-import",
         cashAmount,
-        changeDue,
         customerId: `manual-customer-${r.rowNumber}`,
-        checkAmount: r.checkAmount ?? 0,
-        otherAmount: r.otherAmount ?? 0,
-        gcRedemption: r.gcRedemption ?? 0,
-        purchaseType: r.purchaseType || "Service",
+        checkAmount,
+        otherAmount,
+        gcRedemption,
+        purchaseType,
         appointmentId: r.appointmentUtc?.toISOString() || `manual-appt-${r.rowNumber}`,
         businessAlias: "",
         transactionId,
         userPaymentId: `manual-payment-${r.rowNumber}`,
         businessGroupId: "manual-group",
         productDiscount: 0,
-        serviceCategory: r.itemSold || "",
+        serviceCategory,
         transactionDate,
-        memberShipAmount: r.membership ?? 0,
-        bankAccountAmount: r.bankAccountAmount ?? 0,
-        packageRedemption: r.packageRedemption ?? 0,
-        serviceProviderId: r.serviceProviderId || "manual-provider",
+        memberShipAmount: membershipAmount,
+        bankAccountAmount,
+        packageRedemption,
+        serviceProviderId: r.serviceProviderId || "",
         userPaymentsMstId: `manual-mst-${r.rowNumber}`,
-        vagaroPayLaterAmount: r.buyNowPayLater ?? 0,
+        vagaroPayLaterAmount,
       };
 
       return {
