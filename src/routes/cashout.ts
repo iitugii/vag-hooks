@@ -87,6 +87,9 @@ router.get("/data", async (req: Request, res: Response) => {
             (payload->'payload'->>'changeDue')::numeric,
             (payload->>'change')::numeric,
             (payload->'payload'->>'change')::numeric,
+            /* some webhooks set amountDue equal to change */
+            (payload->>'amountDue')::numeric,
+            (payload->'payload'->>'amountDue')::numeric,
             (SELECT SUM(
               COALESCE(
                 (t->>'change')::numeric,
