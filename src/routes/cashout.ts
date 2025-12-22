@@ -42,13 +42,18 @@ router.get("/data", async (req: Request, res: Response) => {
         WHERE date_trunc('month', ts_local)::date = (${year} || '-' || ${monthStr} || '-01')::date
       ),
       base_amounts AS (
+          COALESCE(
+            NULLIF((payload->>'businessId')::text, ''),
+            NULLIF((payload->'payload'->>'businessId')::text, '')
+          ) AS business_id
         SELECT
           payload,
           ts_local,
           /* cash tendered */
           COALESCE(
-            (payload->>'amountCash')::numeric,
+          payload,
             (payload->'payload'->>'amountCash')::numeric,
+          business_id,
             (payload->>'cashAmount')::numeric,
             (payload->'payload'->>'cashAmount')::numeric,
             (payload->>'cash')::numeric,
@@ -78,63 +83,124 @@ router.get("/data", async (req: Request, res: Response) => {
           )::double precision AS card_tender,
 
           /* change due back to customer */
-          COALESCE(
-            /* explicit cash change fields */
-            (payload->>'cashChangeDue')::numeric,
-            (payload->'payload'->>'cashChangeDue')::numeric,
-            (payload->>'cashChange')::numeric,
-            (payload->'payload'->>'cashChange')::numeric,
-            /* generic change fields (restored) */
-            (payload->>'changeDue')::numeric,
-            (payload->'payload'->>'changeDue')::numeric,
-            (payload->>'change')::numeric,
-            (payload->'payload'->>'change')::numeric,
-            /* sum change from tenders/payments arrays for CASH tenders only */
-            (SELECT SUM(
-              COALESCE(
-                (t->>'change')::numeric,
-                (t->>'changeDue')::numeric,
-                0
-              )
-            )
-            FROM jsonb_array_elements(payload->'tenders') t
-            WHERE LOWER(COALESCE(t->>'tenderType', t->>'type', t->>'method', '')) IN (
-              'cash', 'cash payment', 'cashpayment'
-            )),
-            (SELECT SUM(
-              COALESCE(
-                (t->>'change')::numeric,
-                (t->>'changeDue')::numeric,
-                0
-              )
-            )
-            FROM jsonb_array_elements(payload->'payload'->'tenders') t
-            WHERE LOWER(COALESCE(t->>'tenderType', t->>'type', t->>'method', '')) IN (
-              'cash', 'cash payment', 'cashpayment'
-            )),
-            (SELECT SUM(
-              COALESCE(
-                (p->>'change')::numeric,
-                (p->>'changeDue')::numeric,
-                0
-              )
-            )
-            FROM jsonb_array_elements(payload->'payments') p
-            WHERE LOWER(COALESCE(p->>'tenderType', p->>'type', p->>'method', '')) IN (
-              'cash', 'cash payment', 'cashpayment'
-            )),
-            (SELECT SUM(
-              COALESCE(
-                (p->>'change')::numeric,
-                (p->>'changeDue')::numeric,
-                0
-              )
-            )
-            FROM jsonb_array_elements(payload->'payload'->'payments') p
-            WHERE LOWER(COALESCE(p->>'tenderType', p->>'type', p->>'method', '')) IN (
-              'cash', 'cash payment', 'cashpayment'
-            )),
-            0
+          (
+            CASE
+              WHEN business_id = 'manual-import' THEN
+                COALESCE(
+                  (payload->>'cashChangeDue')::numeric,
+                  (payload->'payload'->>'cashChangeDue')::numeric,
+                  (payload->>'cashChange')::numeric,
+                  (payload->'payload'->>'cashChange')::numeric,
+                  (payload->>'changeDue')::numeric,
+                  (payload->'payload'->>'changeDue')::numeric,
+                  (payload->>'change')::numeric,
+                  (payload->'payload'->>'change')::numeric,
+                  /* fallback for legacy manual uploads where change was only in amountDue */
+                  (payload->>'amountDue')::numeric,
+                  (payload->'payload'->>'amountDue')::numeric,
+                  (SELECT SUM(
+                    COALESCE(
+                      (t->>'change')::numeric,
+                      (t->>'changeDue')::numeric,
+                      0
+                    )
+                  )
+                  FROM jsonb_array_elements(payload->'tenders') t
+                  WHERE LOWER(COALESCE(t->>'tenderType', t->>'type', t->>'method', '')) IN (
+                    'cash', 'cash payment', 'cashpayment'
+                  )),
+                  (SELECT SUM(
+                    COALESCE(
+                      (t->>'change')::numeric,
+                      (t->>'changeDue')::numeric,
+                      0
+                    )
+                  )
+                  FROM jsonb_array_elements(payload->'payload'->'tenders') t
+                  WHERE LOWER(COALESCE(t->>'tenderType', t->>'type', t->>'method', '')) IN (
+                    'cash', 'cash payment', 'cashpayment'
+                  )),
+                  (SELECT SUM(
+                    COALESCE(
+                      (p->>'change')::numeric,
+                      (p->>'changeDue')::numeric,
+                      0
+                    )
+                  )
+                  FROM jsonb_array_elements(payload->'payments') p
+                  WHERE LOWER(COALESCE(p->>'tenderType', p->>'type', p->>'method', '')) IN (
+                    'cash', 'cash payment', 'cashpayment'
+                  )),
+                  (SELECT SUM(
+                    COALESCE(
+                      (p->>'change')::numeric,
+                      (p->>'changeDue')::numeric,
+                      0
+                    )
+                  )
+                  FROM jsonb_array_elements(payload->'payload'->'payments') p
+                  WHERE LOWER(COALESCE(p->>'tenderType', p->>'type', p->>'method', '')) IN (
+                    'cash', 'cash payment', 'cashpayment'
+                  )),
+                  0
+                )
+              ELSE
+                COALESCE(
+                  (payload->>'cashChangeDue')::numeric,
+                  (payload->'payload'->>'cashChangeDue')::numeric,
+                  (payload->>'cashChange')::numeric,
+                  (payload->'payload'->>'cashChange')::numeric,
+                  (payload->>'changeDue')::numeric,
+                  (payload->'payload'->>'changeDue')::numeric,
+                  (payload->>'change')::numeric,
+                  (payload->'payload'->>'change')::numeric,
+                  (SELECT SUM(
+                    COALESCE(
+                      (t->>'change')::numeric,
+                      (t->>'changeDue')::numeric,
+                      0
+                    )
+                  )
+                  FROM jsonb_array_elements(payload->'tenders') t
+                  WHERE LOWER(COALESCE(t->>'tenderType', t->>'type', t->>'method', '')) IN (
+                    'cash', 'cash payment', 'cashpayment'
+                  )),
+                  (SELECT SUM(
+                    COALESCE(
+                      (t->>'change')::numeric,
+                      (t->>'changeDue')::numeric,
+                      0
+                    )
+                  )
+                  FROM jsonb_array_elements(payload->'payload'->'tenders') t
+                  WHERE LOWER(COALESCE(t->>'tenderType', t->>'type', t->>'method', '')) IN (
+                    'cash', 'cash payment', 'cashpayment'
+                  )),
+                  (SELECT SUM(
+                    COALESCE(
+                      (p->>'change')::numeric,
+                      (p->>'changeDue')::numeric,
+                      0
+                    )
+                  )
+                  FROM jsonb_array_elements(payload->'payments') p
+                  WHERE LOWER(COALESCE(p->>'tenderType', p->>'type', p->>'method', '')) IN (
+                    'cash', 'cash payment', 'cashpayment'
+                  )),
+                  (SELECT SUM(
+                    COALESCE(
+                      (p->>'change')::numeric,
+                      (p->>'changeDue')::numeric,
+                      0
+                    )
+                  )
+                  FROM jsonb_array_elements(payload->'payload'->'payments') p
+                  WHERE LOWER(COALESCE(p->>'tenderType', p->>'type', p->>'method', '')) IN (
+                    'cash', 'cash payment', 'cashpayment'
+                  )),
+                  0
+                )
+            END
           )::double precision AS change_due,
 
           /* sum over tender arrays if present */
